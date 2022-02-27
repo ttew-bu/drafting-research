@@ -11,7 +11,7 @@ import uuid
 import sqlite3
 import numpy as np
 import pandas as pd
-from draftbot_sim import *
+from draftbot_sim_adapted import *
 
 class Basic_Agent:
   def draft_packs(self, packs, n_pick):

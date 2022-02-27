@@ -2,10 +2,8 @@ import json
 import random
 import uuid
 import sqlite3
-from matplotlib.font_manager import json_load
 import numpy as np
 import pandas as pd
-from mtg_draftbot.draftbot.draftbot_sim import Set
 
 
 #Define free methods
@@ -30,10 +28,10 @@ def save_packs_array(draft:object, filename:str, dest_filepath=None):
 
   return None
 
+#Old free methods
 def non_zero_softmax(x):
-    if x.max() == 0:
-      print('softmax error')
     x = x / x.max()  # For numerical reasons, to avoid exps of massive numbers.
+
     non_zero_exps = (x > 0) * np.exp(x)
     row_sums = np.sum(non_zero_exps, axis=1)
     probs = non_zero_exps / row_sums.reshape(-1, 1)
@@ -48,7 +46,6 @@ def rotate_array(x, forward=True):
         newx[-1, :] = x[0, :]
         newx[:-1, :] = x[1:, :]
     return newx
-
 
 class Draft:
     """Simulate a Magic: The Gathering draft with algorithmic drafters.
