@@ -4,7 +4,7 @@ import uuid
 import sqlite3
 import numpy as np
 import pandas as pd
-
+from Agents import Basic_Agent, Naive_Pass_Agent
 
 #Define free methods
 def read_draft_packs(filename:str):
@@ -14,7 +14,7 @@ def read_draft_packs(filename:str):
     array= np.asarray(packs)
   return array
 
-def save_packs_array(draft:object, filename:str, dest_filepath=None):
+def save_packs_array(draft:object, filename:str):
   '''Take the output array of packs for a draft and store in static file
   This will allow for repeated experiments on the same sets of cards'''
 
@@ -137,7 +137,8 @@ class Draft:
                  n_cards_in_pack=14,
                  cards_path=None,
                  card_values_path=None,
-                 packs_input_file=None):
+                 packs_input_file=None,
+                 agent_strategies=None):
         self.draft_id = uuid.uuid4()
         self.n_drafters = n_drafters
         self.packs_input = packs_input_file
@@ -171,15 +172,6 @@ class Draft:
 
     def draft(self):
         for n in range(self.n_rounds):
-            # packs = self.set.random_packs_array(n_packs=self.n_drafters)
-            # #self.packs_for_draft.append(packs)
-            # self.packs_for_draft[n] = packs.copy()
-            # for n_pick in range(self.n_cards_in_pack):
-            #     packs = self.draft_packs(packs, n_pick)
-            # self.round += 1
-
-                      #Create correct number of packs based on rounds
-          #print(len(read_draft_packs(self.packs_input)))
           try:
             #Pull packs from input
             self.packs_for_draft = read_draft_packs(self.packs_input)
@@ -249,7 +241,7 @@ class Draft:
         
         preferences = np.einsum(
             'dca,da->dc', pack_archetype_weights, self.drafter_preferences)
-
+        
         pick_probs = non_zero_softmax(preferences)
 
 
@@ -392,6 +384,7 @@ class Set:
         packs = [self.random_pack_dict(size=pack_size) for _ in range(n_packs)]
         cards_in_pack_df = pd.DataFrame(np.zeros(shape=(n_packs, self.n_cards), dtype=int),
                                         columns=self.card_names)
+
         for idx, pack in enumerate(packs):
             for card in pack:
                 name = card['name']
@@ -421,7 +414,6 @@ class Set:
                 rares.append(card)
         return commons, uncommons, rares
 
-
 class MultiStratDraft:
     """ An adaptation of the Draft class that allows different seats at the draft table
     to use different strategies. The primary difference here is that you must pass in the number of drafters 
@@ -435,21 +427,17 @@ class MultiStratDraft:
     
     """
     def __init__(self, 
-                 n_drafters_strat_one:int=1,
-                 strat_one:str='naive passes',
-                 n_drafters_strat_two:int=7,
                  n_rounds:int=3,
                  n_cards_in_pack:int=14,
                  cards_path:str=None,
                  card_values_path:str=None,
-                 packs_input_file:str= None
+                 packs_input_file:str= None,
+                 agent_list:list=None
                  ):
         self.draft_id = uuid.uuid4()
+        self.agent_list=agent_list
+        self.n_drafters=len(agent_list)
         self.packs_input = packs_input_file
-        self.n_drafters_strat_one = n_drafters_strat_one
-        self.strat_one=strat_one
-        self.n_drafters_strat_two = n_drafters_strat_two
-        self.n_drafters = n_drafters_strat_one+n_drafters_strat_two
         self.n_rounds = n_rounds
         self.n_cards_in_pack = n_cards_in_pack
         # These archetype weights could be learned from human draft data.
@@ -552,40 +540,15 @@ class MultiStratDraft:
         options = packs.copy()
         self.options[:, :, n_pick + self.n_cards_in_pack * self.round] = options
         
-        #1's or 0's if card is in pack 
+        #1's or 0's if card is in pack, this is where we're gonna delineate from
         card_is_in_pack = np.sign(packs)
         
-        pack_archetype_weights = (
-            card_is_in_pack.reshape((self.n_drafters, self.set.n_cards, 1)) *
-            self.archetype_weights.reshape((1, self.set.n_cards, self.n_archetypes)))
+        lst = []
+        for idx, pack in enumerate(card_is_in_pack): 
+          array = self.agent_list[idx](pack,self,idx).reshape(1,self.set.n_cards)
+          lst.append(array)
 
-        preferences = np.einsum(
-            'dca,da->dc', pack_archetype_weights, self.drafter_preferences)
-
-        if self.strat_one == 'naive passes':
-          #NEW: Create some coefficient based on passed cards and archetypes
-          pref2 = preferences[0:self.n_drafters_strat_one]
-
-          #iterate through higher level arrays for each drafter 
-          for val in range(0,len(pref2)):
-            already_seen = np.sum(self.passes[val], axis=(1))
-            already_seen_adj = 1 / (already_seen +1)
-            array = already_seen_adj * pref2[val]
-            pref2[val] = np.reshape(array,(1,array.shape[0]))
-        
-        # if self.strat_one == 'random':
-        #   #NEW: Create some coefficient based on passed cards and archetypes
-        #   pref2 = preferences[0:self.n_drafters_strat_one]
-
-        #   #iterate through higher level arrays for each drafter 
-        #   for val in range(0,len(pref2)):
-        #     shape = pref2[val].shape
-        #     pref2[val] = np.random.rand(1,shape[0])
-
-
-        #In theory, this makes someone far more likely to take a card they've seen
-        #Not necessarily what we want, but more so to illustrate the point here
-        prefs = np.concatenate([pref2,preferences[self.n_drafters_strat_one:self.n_drafters]],axis=0)
+        prefs = np.concatenate(lst, axis=0)
 
         pick_probs = non_zero_softmax(prefs)
         
@@ -603,6 +566,7 @@ class MultiStratDraft:
         
         #Take the cards+archetypes and the drafters+cards to get an array shaped drafters x archetypes
         #Takes current values and then update them based on math above
+
         self.drafter_preferences = (
             self.drafter_preferences +
             np.einsum('ca,dc->da', self.archetype_weights, picks))
@@ -614,6 +578,7 @@ class MultiStratDraft:
         self.preferences[:, :, n_pick + self.n_cards_in_pack * self.round] = (
             self.drafter_preferences.copy())
 
+        
         return packs
 
 
@@ -637,6 +602,8 @@ class MultiStratDraft:
           pick_idx = np.argmax(row)
           picks[ridx, pick_idx] = 1
       return picks
+
+
 
     @property
     def cards(self):
