@@ -6,7 +6,6 @@
 
 #Import dependencies
 import numpy as np
-import pandas as pd
 import random
 
 class Basic_Agent:
@@ -43,15 +42,37 @@ class Naive_Pass_Agent:
 
     return preferences
 
-# class Naive_Receiver_Agent:
-#   def decision_function(pack,draft,drafter_position):
+class Naive_Receiver_Agent:
+  def decision_function(pack,draft,drafter_position):
+    '''Define how the NR Agent calculates its pick.
+    This function places a higher weight on the archetypes that are passed to it most
+    '''
+
+    #Create new array that sums up what has been passed to the player
+    passed_array = np.sum(draft.options[drafter_position], axis=1).reshape((draft.set.n_cards,1))
+
+    #Pull card values at each archetype out 
+    standard_archweights = draft.archetype_weights.reshape((draft.set.n_cards, draft.n_archetypes))
+
+    #Array of shape 329,10 showing the # of times a card has been seen * the value to each archetype
+    receptions = np.multiply(passed_array, standard_archweights)
+
+    #Now multiply in the pack where 1 represents a card in the pack and a 0 is a missing card
+    pack_weights = receptions * pack.reshape((draft.set.n_cards,1))
+
+    #Utilize passes array to compute weights, the more times archetype-compatible cards are seen, the more they're taken
+    preferences = np.einsum("ca,a->c",pack_weights, draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes)))
+    
+    return preferences
+
 
 # class Dummy_Agent:
 #   def decision_function(pack,draft,drafter_position,dummy_choice='random'):
 #     '''Define how the NP Agent calculates the optimal draft pack.
 #     This function is a dummy agent that picks some random card in the pick (or the first/last card in the pack);
 #     the primary advantage to having a bot like this in the draft is to simulate
-#     highly inexperienced drafters in the same way SKlearn uses the dummyclassifier()
+#     highly inexperienced drafters in the same way SKlearn uses the dummyclassifier(). 
+#     We can also simulate 'trolls' who do an ineffective strategy using these unsophisticated rules
 #     '''
 
 #     if dummy_choice == 'first':
