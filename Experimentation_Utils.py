@@ -30,8 +30,8 @@ class PseudoDraft:
         self.drafter_preferences = np.ones((1,n_archs))
 
 #COMPLETE
-def weight_generator(df_path, output_filename, zero_out_noncolor_archs=False, 
-min_max_scale=False,min_max_range=(1,5)):
+def weight_generator(df_path, zero_out_noncolor_archs=False, 
+min_max_scale=False,color_str='IWD',min_max_range=(1,5)):
     '''Take a dataframe created from our 17lands web scraper and convert it into 
     an array that we can feed into our simulator generator. By default, this function
     will take our weights array from 17lands' IWD metric (effectively wins above replacement
@@ -45,8 +45,10 @@ min_max_scale=False,min_max_range=(1,5)):
     #Read df
     df = pd.read_csv(df_path)
 
+    output_filename = df_path.replace(r'_default_','').replace(r'_df.csv','.csv')
+
     #Strip out IWD from titles so we can regex match the color column to the archs
-    df.columns = df.columns.str.replace(r'IWD', '')
+    df.columns = df.columns.str.replace(r'{}'.format(color_str), '')
 
     #Archs will be all cols but the name and color coming from the scraper
     n_archs = df.loc[:, ~df.columns.isin(['Name', 'Color'])].shape[1]
@@ -55,20 +57,7 @@ min_max_scale=False,min_max_range=(1,5)):
     validation_df = df.loc[:, ~df.columns.isin(['Name', 'Color'])]
 
     #Note that the length of the df will always be the cards in the set and the archs will be everything but the name and colors
-    weights_array = validation_df.to_numpy().reshape((df.shape[0],n_archs))
-    #if  scale_min_max == True and scale_by_max == True: throw assertion error 
-
-    #Scale converting the card weights as a fraction of the best card in each arch
-    # if scale_by_max == True:
-
-    #     #Now Scale the archetypes so the card weights are a function of the best arch + best card
-    #     weights_array_archs = weights_array.sum(axis=0)
-
-    #     wmax = weights_array_archs.max()
-
-    #     weights_array_archs_final = (weights_array_archs / wmax).reshape((1,10))
-
-    #     weights_array = weights_array * weights_array_archs_final
+    weights_array = validation_df.to_numpy().reshape((df.shape[0],n_archs)) 
 
     #Use default mm scaler
     if min_max_scale == True:
@@ -79,14 +68,17 @@ min_max_scale=False,min_max_range=(1,5)):
 
         weights_array = weights_array.reshape((272,10))
 
-        
+        #Add in the naming convention if we generated a set like this
+        output_filename = output_filename.replace(r'.csv','_minmax.csv')
+        print(output_filename)
 
+    
     #Apply additional transforms 
     if zero_out_noncolor_archs == True:
 
         #store the colnames that are not name or color to confirm they're the right datatype
         cols = df.loc[:, ~df.columns.isin(['Name','Color'])].columns.values
-        print(validation_df.columns.values)
+        #print(validation_df.columns.values)
         for c in cols:
             validation_df[c] = validation_df[c].astype('float')
 
@@ -129,29 +121,33 @@ min_max_scale=False,min_max_range=(1,5)):
         #zero out card weights in arrays that are not inclusive of the card's color
         weights_array = weights_array * color_check_array
 
+        #Add in the naming convention if we generated a set like this
+        output_filename = output_filename.replace(r'.csv','_colors.csv')
+        print(output_filename)
+
     df_output = pd.DataFrame(weights_array)
-    df_output.to_csv('weights_data/'+output_filename, index=False)
+    df_output.to_csv(output_filename, index=False)
 
-
-
-#dump path 'C:/Users/trist/OneDrive/Documents/draft_data_public.VOW.PremierDraft.csv'
-#nrows really 420000
-# IN PROGRESS 
-
-def simulation_generator(draft_dump_path, output_name, weights_path, agents, nrows=42000, pick_index=11):
+#COMPLETE
+def simulation_generator(draft_dump_path, weights_path, agents, nrows=42000, pick_index=11):
     """Run simulations with out closed circuit bots on real 17lands data
     """
 
+    #Read weights csv and clean up naming conventions to automate our workflow
     df = pd.read_csv(draft_dump_path,nrows=nrows)
+    output_name = weights_path.replace(r'.csv','_{}.csv').format(str(nrows))
+    output_name = output_name.replace(r'weights_data/processed_weights','')
 
+    #Pull our weights df and send to array
     weights_df =  pd.read_csv(weights_path)
     weights = weights_df.to_numpy()
 
+    #Get the IDs to iterate through
     unique_ids = df.draft_id.unique()
-
     agent_names = [agent.name for agent in agents]
     final_output = []
 
+    #Create a column to track matches w/ real data here
     match_cols = agent_names + ['Real']
 
     #let's iterate through every draft that we pulled from the dump file 
@@ -218,7 +214,6 @@ def simulation_generator(draft_dump_path, output_name, weights_path, agents, nro
                 picks = []
                 top3_picks = [] 
                 for a in agents: 
-                    print(psd.packs[n])
                     array = a.decision_function(psd.packs[n],psd,0).reshape((psd.set.n_cards))
 
                     picks.append(array.argmax())
@@ -258,7 +253,7 @@ def simulation_generator(draft_dump_path, output_name, weights_path, agents, nro
             for agent in agent_names:
 
                 #Dynamically creat these cols with same suffix
-                colname = agent + '_Match'
+                colname = agent + '_match'
 
                 df_matches[colname] = df_matches[agent] == df_matches['Real']
 
@@ -315,7 +310,6 @@ def simulation_generator(draft_dump_path, output_name, weights_path, agents, nro
                 t3_sums.append(dft3[col].sum())
 
             #List with sublists for values
-
             fo = [id, 
             t1_sum]
             fo.extend(t1_sums)
@@ -332,11 +326,18 @@ def simulation_generator(draft_dump_path, output_name, weights_path, agents, nro
 
             resdef = pd.DataFrame(final_output, columns=cols)
 
-            resdef.to_csv(output_name)
+            #Write the dataframe here that includes all of our simulation picks
+            results_str = "results_data/"+output_name
+            resdef.to_csv(results_str)
 
-            df_matches.to_csv('t1_performance.csv', mode='a')
+            #Create files to track t1/t3 accuracy and place them in the appropriate folder
+            t1_str = 'performance_data/' + output_name.replace(r'.csv','_t1_performance.csv')
 
-            dft3.to_csv('t3_performance.csv', mode='a')
+            #header arg here checks for header and only adds in header info if its missing (e.g. no duplicate headers)
+            df_matches.to_csv(t1_str,mode='a',header=(not os.path.exists(t1_str)))
+
+            t3_str = 'performance_data/' +output_name.replace(r'.csv','_t3_performance.csv')
+            dft3.to_csv(t3_str, mode='a',header=(not os.path.exists(t3_str)))
 
         
         except IndexError:
