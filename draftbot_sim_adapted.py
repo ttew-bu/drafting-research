@@ -1,10 +1,16 @@
+#Drafbot_sim_adapted
+#This is an abriged version of the draft simulation that can be found in 
+#Matthew Drury's mtg-draftbot repo here: 
+
+#This file serves to hold all helper functions and 
+
 import json
 import random
 import uuid
 import sqlite3
 import numpy as np
 import pandas as pd
-from Agents import Basic_Agent, Naive_Pass_Agent
+
 
 #Define free methods
 def read_draft_packs(filename:str):
@@ -138,7 +144,7 @@ class Draft:
                  cards_path=None,
                  card_values_path=None,
                  packs_input_file=None,
-                 agent_strategies=None):
+                 rotate=False):
         self.draft_id = uuid.uuid4()
         self.n_drafters = n_drafters
         self.packs_input = packs_input_file
@@ -154,6 +160,9 @@ class Draft:
         # Internal algorithmic data structure.
         self.drafter_preferences = np.ones(shape=(self.n_drafters, self.n_archetypes))
         self.round = 0
+
+        #New feature to allow for swapping of direction
+        self.rotate = False
         # Output data structures.
         self.options = np.zeros(
             (self.n_drafters, self.set.n_cards, self.n_cards_in_pack * self.n_rounds),
@@ -257,9 +266,12 @@ class Draft:
         self.drafter_preferences = (
             self.drafter_preferences +
             np.einsum('ca,dc->da', self.archetype_weights, picks))
+
         self.picks[:, :, n_pick + self.n_cards_in_pack * self.round] = picks.copy()
+
         self.preferences[:, :, n_pick + self.n_cards_in_pack * self.round] = (
             self.drafter_preferences.copy())
+
         return packs
 
     def make_picks(self, pick_probs):
@@ -338,6 +350,12 @@ class Draft:
                                       array=self.cards,
                                       column_names=self.card_names,
                                       table_name="cards")
+
+    def _write_passes_to_database(self, conn, if_exists='append'):
+      self._write_array_to_database(conn,
+                                array=self.passes,
+                                column_names=self.card_names,
+                                table_name="passes")
 
 class Set:
     """A set of cards to draft from.
@@ -432,7 +450,8 @@ class MultiStratDraft:
                  cards_path:str=None,
                  card_values_path:str=None,
                  packs_input_file:str= None,
-                 agent_list:list=None
+                 agent_list:list=None,
+                 rotate = False
                  ):
         self.draft_id = uuid.uuid4()
         self.agent_list=agent_list
@@ -450,6 +469,9 @@ class MultiStratDraft:
         # Internal algorithmic data structure.
         self.drafter_preferences = np.ones(shape=(self.n_drafters, self.n_archetypes))
         self.round = 0
+
+        #New, used to rotate in between rounds
+        self.rotate = False
 
         # Output data structures.
         self.options = np.zeros(
@@ -524,7 +546,7 @@ class MultiStratDraft:
                           shape (n_drafters, n_archetypes, n_cards_in_pack * n_rounds)
           After archytype preferences are re-computed for each drafter post
           pick, these are copied into an (n_drafters, n_archetypes) slice of
-          this output array.
+          this output array.f
 
         Returns
         -------
@@ -541,11 +563,18 @@ class MultiStratDraft:
         self.options[:, :, n_pick + self.n_cards_in_pack * self.round] = options
         
         #1's or 0's if card is in pack, this is where we're gonna delineate from
+
         card_is_in_pack = np.sign(packs)
         
         lst = []
+
+        #
         for idx, pack in enumerate(card_is_in_pack): 
-          array = self.agent_list[idx](pack,self,idx).reshape(1,self.set.n_cards)
+
+
+          array = self.agent_list[idx].decision_function(pack,self,idx).reshape(1,self.set.n_cards)
+
+
           lst.append(array)
 
         prefs = np.concatenate(lst, axis=0)
