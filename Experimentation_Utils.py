@@ -59,20 +59,6 @@ min_max_scale=False,color_str='IWD',min_max_range=(1,5)):
     #Note that the length of the df will always be the cards in the set and the archs will be everything but the name and colors
     weights_array = validation_df.to_numpy().reshape((df.shape[0],n_archs)) 
 
-    #Use default mm scaler
-    if min_max_scale == True:
-
-        scaler = MinMaxScaler(feature_range=min_max_range)
-
-        weights_array = scaler.fit_transform(weights_array.reshape((10,272)))
-
-        weights_array = weights_array.reshape((272,10))
-
-        #Add in the naming convention if we generated a set like this
-        output_filename = output_filename.replace(r'.csv','_minmax.csv')
-        print(output_filename)
-
-    
     #Apply additional transforms 
     if zero_out_noncolor_archs == True:
 
@@ -125,6 +111,19 @@ min_max_scale=False,color_str='IWD',min_max_range=(1,5)):
         output_filename = output_filename.replace(r'.csv','_colors.csv')
         print(output_filename)
 
+    #Use default mm scaler
+    if min_max_scale == True:
+
+        scaler = MinMaxScaler(feature_range=min_max_range)
+
+        weights_array = scaler.fit_transform(weights_array.reshape((10,272)))
+
+        weights_array = weights_array.reshape((272,10))
+
+        #Add in the naming convention if we generated a set like this
+        output_filename = output_filename.replace(r'.csv','_minmax.csv')
+        print(output_filename)
+        
     df_output = pd.DataFrame(weights_array)
     df_output.to_csv(output_filename, index=False)
 
