@@ -115,6 +115,12 @@ class Arch_Pass_Agent:
     #scaler = MinMaxScaler(feature_range=(1,2))
     #transformed_archs = scaler.fit_transform(already_seen_archs)
 
+    #If it is the last pick, then auto-pick the last card left
+    if np.sum(pack)==1:
+        preferences = pack
+
+        return preferences
+
     #if it isn't the first pick, use the arch flow
     if np.sum(draft.picks) > 0:
       
@@ -139,13 +145,9 @@ class Arch_Pass_Agent:
         pack.reshape((draft.set.n_cards,1)) *
         draft.archetype_weights.reshape((draft.set.n_cards, draft.n_archetypes)))
 
-      #Last card, we just take what's left
-      if np.sum(pack)==1:
-        preferences = pack
         
       #Pick using basic strategy for pick 1 since we have nothing passed to us yet
-      else:
-        preferences = np.einsum("ca,a->c",pack_archetype_weights, draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes)))
+      preferences = np.einsum("ca,a->c",pack_archetype_weights, draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes)))
       
       return preferences
 
@@ -176,6 +178,13 @@ class Arch_Reciever_Agent:
     #Like with the naive agent for passes, we will add 1 to all cards so that we do not run into multiply/divide by 0 errors
     receptions_archs = receptions.sum(axis=0).reshape((1,draft.n_archetypes))
 
+    
+    #If it is the last pick, then auto-pick the last card left
+    if np.sum(pack)==1:
+        preferences = pack
+
+        return preferences
+
     if np.sum(draft.picks) > 0:
       #We can't really do anything besides the basic pick here since our strategy depends on other cards
 
@@ -192,24 +201,17 @@ class Arch_Reciever_Agent:
       #Direct multiplication to have clear interpretation of dampening effect (e.g. 20% less of arch, 20% reduction)
       new_pack_weights = pack_options * (transformed_archs)
 
-      
       preferences = np.einsum("ca,a->c",new_pack_weights, drafter_pool_prefs.reshape(draft.n_archetypes))
+
+      return preferences
 
     else:
       pack_archetype_weights = (
         pack.reshape((draft.set.n_cards,1)) *
         draft.archetype_weights.reshape((draft.set.n_cards, draft.n_archetypes)))
+      preferences = np.einsum("ca,a->c",pack_archetype_weights, draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes)))
 
-      #If it is the last pick, then auto-pick the last card left
-      if np.sum(pack)==1:
-        preferences = pack
-
-      #if it is pick 1, use the default basic agent flow
-      else:
-        preferences = np.einsum("ca,a->c",pack_archetype_weights, draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes)))
-
-
-    return preferences
+      return preferences
 
 ##STANDARD HEURTISTC BOTS
 #The bots below use common drafting heuristics including: picking the 'best' card always, taking the best card for n turns then using that pool to as your arch prefs
@@ -224,13 +226,20 @@ class Basic_Agent:
     Pulling from common literature, the basic agent simply takes arrays of archetype preferences and
     card fits, and performs the follow transformation: '''
 
-    pack_archetype_weights = (
+    #Last card, we just take what's left
+    if np.sum(pack)==1:
+      preferences = pack
+
+      return preferences
+
+    else:
+      pack_archetype_weights = (
             pack.reshape((draft.set.n_cards,1)) *
             draft.archetype_weights.reshape((draft.set.n_cards, draft.n_archetypes)))
 
-    preferences = np.einsum("ca,a->c",pack_archetype_weights, draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes)))
+      preferences = np.einsum("ca,a->c",pack_archetype_weights, draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes)))
 
-    return preferences
+      return preferences
 
 class Greedy_Agent:
   def __init__(self, 
@@ -444,6 +453,7 @@ class Hard_Agent:
 
   def __init__(self,
   turns_hard=21,
+  n_cards=42,
   bias_function = 'linear'):
        self.name = 'hard_agent' + "_" + str(turns_hard) + '_' + str(bias_function)
        self.turns_hard = turns_hard
@@ -458,35 +468,37 @@ class Hard_Agent:
     #Again, picks would be 0 for pick 1, so we add in 1 here
     picknum = np.sum(draft.picks[drafter_position]) + 1
 
+    #Last card, we just take what's left
+    if np.sum(pack)==1:
+      preferences = pack
+
+      return preferences
+
     #logic for linear model bias term
     if self.bias_function == 'linear':
       if picknum<=self.turns_hard:
-        bias_coefficient = picknum / self.turns_hard
+        bias_coefficient = self.turns_hard/picknum
       else:
         bias_coefficient = 1
 
     #logic for ln bias term
     if self.bias_function == 'ln':
-
       if picknum<=self.turns_hard:
-        bias_coefficient = np.log(picknum)
+        bias_coefficient = 1 + np.log(picknum/self.turns_hard)
       else:
         bias_coefficient = 1
 
     #logic for log10 bias term
     if self.bias_function == 'log10':
-      
       if picknum<=self.turns_hard:
-        bias_coefficient = np.log10(picknum)
+        bias_coefficient = 1 + np.log10(picknum/self.turns_hard)
       else:
         bias_coefficient = 1
-    
+      
     pack_archetype_weights = (
             pack.reshape((draft.set.n_cards,1)) *
             draft.archetype_weights.reshape((draft.set.n_cards, draft.n_archetypes)))
 
-    adjusted_pool_bias = bias_coefficient * draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes))
-
-    preferences = np.einsum("ca,a->c",pack_archetype_weights, adjusted_pool_bias)
+    preferences = np.einsum("ca,a->c",(bias_coefficient*pack_archetype_weights), draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes)))
 
     return preferences
