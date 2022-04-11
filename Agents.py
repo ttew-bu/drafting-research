@@ -452,12 +452,13 @@ class Hard_Agent:
   """
 
   def __init__(self,
-  turns_hard=21,
-  n_cards=42,
+  turn_range_one_end=8,
+  turn_range_two_start=16,
   bias_function = 'linear'):
-       self.name = 'hard_agent' + "_" + str(turns_hard) + '_' + str(bias_function)
-       self.turns_hard = turns_hard
-       self.bias_function = 'linear'
+       self.name = 'hard_agent' + "_" + str(turn_range_one_end) + '_' +str(turn_range_two_start) + '_' + str(bias_function)
+       self.turn_range_one_end = turn_range_one_end
+       self.turn_range_two_start = turn_range_two_start
+       self.bias_function = bias_function
 
   def decision_function(self,pack,draft,drafter_position):
     '''Define how the basic agent calculates the optimal draft pick.
@@ -471,34 +472,35 @@ class Hard_Agent:
     #Last card, we just take what's left
     if np.sum(pack)==1:
       preferences = pack
-
       return preferences
 
     #logic for linear model bias term
     if self.bias_function == 'linear':
-      if picknum<=self.turns_hard:
-        bias_coefficient = self.turns_hard/picknum
+      if picknum<=self.turn_range_one_end:
+        bias_coefficient = self.turn_range_one_end/picknum
       else:
-        bias_coefficient = 1
+        bias_coefficient = 0
 
     #logic for ln bias term
     if self.bias_function == 'ln':
-      if picknum<=self.turns_hard:
-        bias_coefficient = 1 + np.log(picknum/self.turns_hard)
+      if picknum<=self.turn_range_one_end:
+        bias_coefficient = 1 + np.log(self.turn_range_one_end/picknum)
+
       else:
-        bias_coefficient = 1
+        bias_coefficient = 0
 
     #logic for log10 bias term
     if self.bias_function == 'log10':
-      if picknum<=self.turns_hard:
-        bias_coefficient = 1 + np.log10(picknum/self.turns_hard)
+      if picknum<self.turn_range_one_end:
+        bias_coefficient = 1 + np.log10(self.turn_range_one_end/picknum)
       else:
-        bias_coefficient = 1
+        bias_coefficient = 0
+
       
     pack_archetype_weights = (
             pack.reshape((draft.set.n_cards,1)) *
             draft.archetype_weights.reshape((draft.set.n_cards, draft.n_archetypes)))
 
-    preferences = np.einsum("ca,a->c",(bias_coefficient*pack_archetype_weights), draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes)))
+    preferences = np.einsum("ca,a->c",pack_archetype_weights, (bias_coefficient+draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes))))
 
     return preferences

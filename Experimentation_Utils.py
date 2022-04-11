@@ -127,7 +127,7 @@ min_max_scale=False,color_str='IWD',min_max_range=(1,5)):
     df_output = pd.DataFrame(weights_array)
     df_output.to_csv(output_filename, index=False)
 
-#COMPLETE
+#ADDING IN NEW DATA OUTPUTS 4/10/22
 def simulation_generator(draft_dump_path, weights_path, agents, nrows=42000, pick_index=11):
     """Run simulations with out closed circuit bots on real 17lands data
     """
@@ -198,13 +198,15 @@ def simulation_generator(draft_dump_path, weights_path, agents, nrows=42000, pic
             card_names = picks_df.columns.values
 
             #Instantiate the object
-            psd = PseudoDraft(10, weights, 
+            psd = PseudoDraft(
+            10, weights, 
             packs_array,
             card_names)
 
             #Create lists to hold totals for picks
             totals = []
             totals_top3 = []
+            scores = []
 
             #Iterate through all the rounds 
             for n in range(0,42):
@@ -212,19 +214,35 @@ def simulation_generator(draft_dump_path, weights_path, agents, nrows=42000, pic
                 #Create accumulator lists for the picks made by the bots (and top 3)
                 picks = []
                 top3_picks = [] 
+                ordered_cards = []
                 for a in agents: 
                     array = a.decision_function(psd.packs[n],psd,0).reshape((psd.set.n_cards))
 
+                    #T1 DATA WORKFLOW
+                    #Add the largest item in the array, 
+                    #argmax returns first item (e.g. lowest index) with tie
                     picks.append(array.argmax())
 
-
+                    #T3 DATA WORKFLOW
+                    #Split pull indexes of top 3 values
                     top3 = np.argpartition(array, -3)[-3:]
+
+                    #append sorted results
                     top3_picks.append(top3)
+
+                    #WORKFLOW FOR ORDER OF CARDS PICKED
+
+                    #Sort the array in index form
+                    #Here we have array n_cards long with all the scores; ties for 0's may be weird here
+                    sorted_indexes = np.argsort(array)
+                    ordered_cards.append(sorted_indexes)
+                    
 
                 #Add in the actual pick 
                 picks.append(picks_array[n].argmax())
                 totals.append(picks)
                 totals_top3.append(top3_picks)
+                scores.append(ordered_cards)
 
 
                 #Now we need to input the data from what actually happened so the bots can start from a net new position 
@@ -236,7 +254,9 @@ def simulation_generator(draft_dump_path, weights_path, agents, nrows=42000, pic
             #Now let's update the drafter preferences so we're not eternally multiplying by 1
                 psd.drafter_preferences = (
                 psd.drafter_preferences +
-                np.einsum('ca,dc->da', psd.archetype_weights, picks_array[n].reshape(psd.set.n_cards,1)))
+                np.einsum('ca,dc->da', psd.archetype_weights, picks_array[n].reshape(1,psd.set.n_cards)
+                ))
+
 
             #Let's create some dataframes
 
@@ -248,6 +268,7 @@ def simulation_generator(draft_dump_path, weights_path, agents, nrows=42000, pic
 
             #Create an accumulator so we can index on our match cols later
             sumcol_names = []
+
             #For every agent we're evaluating, let's get a boolean column that tells us whether or not we matched
             for agent in agent_names:
 
@@ -279,6 +300,7 @@ def simulation_generator(draft_dump_path, weights_path, agents, nrows=42000, pic
                 t1_sums.append(df_matches[col].sum())
 
 
+            ##TOP 3 DATAFRAME WORKFLOW
             dft3 = pd.DataFrame(totals_top3, columns = agent_names)
 
             #We can just inherit the real column and port it over here
@@ -308,21 +330,35 @@ def simulation_generator(draft_dump_path, weights_path, agents, nrows=42000, pic
                 #Value here is the number of picks (out of 42) a given agent gets right
                 t3_sums.append(dft3[col].sum())
 
+
+            ##WORKFLOW FOR INDEXING RESULTS
+            idx_df = pd.DataFrame(scores,columns=agent_names)
+            idx_df['Real'] = df_matches['Real']
+            idx_df['id'] = id
+
+            for agent in agent_names:
+
+                colname = agent + '_pick_idx'
+                idx_df[colname] = idx_df.apply(lambda x: np.where(x[agent][::-1]==x['Real'])[0][0], axis=1)
+                
+
             #List with sublists for values
-            fo = [id, 
-            t1_sum]
+            fo = [id, t1_sum]
             fo.extend(t1_sums)
+
             fo.append(t3_sum)
             fo.extend(t3_sums)
             final_output.append(fo)
 
             #List with sublists for colnames
-            cols =["id",
-            "t1_sum"]
+            cols =["id","t1_sum"]
             cols.extend(sumcol_names)
+
             cols.append("t3_sum")
             cols.extend(t3_sumcol_names)
 
+
+            #Results dataframe with agents, t1sum, t3sum, and id)
             resdef = pd.DataFrame(final_output, columns=cols)
 
             #Write the dataframe here that includes all of our simulation picks
@@ -338,6 +374,10 @@ def simulation_generator(draft_dump_path, weights_path, agents, nrows=42000, pic
             t3_str = 'performance_data/' +output_name.replace(r'.csv','_t3_performance.csv')
             dft3.to_csv(t3_str, mode='a',header=(not os.path.exists(t3_str)))
 
+            #Write the dataframe here that includes all of our simulation picks
+            index_str = "index_data/"+output_name.replace(r'.csv','_index.csv')
+            idx_df.to_csv(index_str)
+            idx_df.to_csv(index_str, mode='a',header=(not os.path.exists(index_str)))
         
         except IndexError:
             print(id)
