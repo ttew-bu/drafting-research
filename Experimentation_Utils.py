@@ -1,12 +1,8 @@
-from array import array
-from draftbot_sim_adapted import *
-import sqlite3
+from Agents import *
 import pandas as pd
 import numpy as np
-import json
 import os
-from Agents import *
-from sklearn.preprocessing import RobustScaler, StandardScaler, MinMaxScaler, normalize
+from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 
 ##CLASS DEFS THAT ALLOW US TO USE BOTS BUILT FOR CLOSED-CIRCUIT SIMULATIONS 
@@ -35,7 +31,6 @@ class PseudoDraft:
         self.options = np.zeros((1,self.set.n_cards,cards_per_draft))
         self.passes = np.zeros((1,self.set.n_cards,cards_per_draft))
         self.drafter_preferences = np.ones((1,weights.shape[1]))
-
 
 ##HELPER FUNCTIONS
 #FUNCTIONS THAT EITHER DRIVE FOR WEIGHT/SIMS
@@ -94,7 +89,7 @@ def create_pack_pick_pass_arrays(df:pd.DataFrame,id:str,pick_index:int=11):
 
     return output_dict
 
-def generate_agent_selection_data(psd:object, agent:object, pick_n:int, picks:list, top3_picks:list,
+def generate_agent_selection_data(psd:object, agent:object, pick_n:int, picks:list,
 int_scores:list, int_array_keys:list):
     """Given the draft, agent, pick, and accumulator variables, generate the selection for an agent given a certain 
     pick in the draft. The draft/agent objects hold information on pool/preferences/selection calculations.
@@ -112,10 +107,10 @@ int_scores:list, int_array_keys:list):
     #argmax returns first item (e.g. lowest index) with tie
     picks.append(bot_score_array.argmax())
 
-    #T3 DATA WORKFLOW
+    #T3 DATA WORKFLOW DEPRECATED 
     #Split pull indexes of top 3 values
-    top3 = np.argpartition(bot_score_array, -3)[-3:]
-    top3_picks.append(top3)
+    #top3 = np.argpartition(bot_score_array, -3)[-3:]
+    #top3_picks.append(top3)
 
     #WORKFLOW FOR ORDER OF CARDS PICKED
     #First, only take the cards that are in the pack
@@ -144,65 +139,69 @@ def update_weights(psd:object, draft_arrays:dict, n:int):
     #and an array of shape drafters,archs (e.g. 1, 10) -> gives us array (1 drafter, 10 arch preferences)
     psd.drafter_preferences = (
     psd.drafter_preferences +
-    np.einsum('ca,dc->da', psd.archetype_weights, draft_arrays['picks'][n].reshape(1,psd.set.n_cards)
-                ))
+    np.einsum('ca,dc->da', psd.archetype_weights, draft_arrays['picks'][n].reshape(1,psd.set.n_cards)))
 
-def generate_accuracy_score_df(df_matches:pd.DataFrame, dft3:pd.DataFrame, id:str, agent_names:list, output_name:str):
-    """Given the matches dataframe of top1 pick performance, top3 pick performance, the draft id, agents used in the sim,
-    and a target filename, create a dataframe holding t1/t3 pick information at the draft level
+##DEPRECATED, NEW PREPROCESSING FUNCTION DOES ALL OF THIS GIVEN THE INDEX FILE
+# def generate_accuracy_score_df(df_matches:pd.DataFrame, dft3:pd.DataFrame, id:str, agent_names:list, output_name:str):
+#     """Given the matches dataframe of top1 pick performance, top3 pick performance, the draft id, agents used in the sim,
+#     and a target filename, create a dataframe holding t1/t3 pick information at the draft level
     
-    Output here is 3 dfs described below (they're all written to filepaths as opposed to being returned):
+#     Output here is 3 dfs described below (they're all written to filepaths as opposed to being returned):
     
-    First is a df with columns for t1/t3 performance per agent where a row is the number of times (out of 42)
-    the agent selected the correct card given a certain draft ID. This is a relatively small df compared to the others
-    and is primarily good for generalizing performance at the draft level, classifying drafts, and high-level analyses joining in player data.
+#     First is a df with columns for t1/t3 performance per agent where a row is the number of times (out of 42)
+#     the agent selected the correct card given a certain draft ID. This is a relatively small df compared to the others
+#     and is primarily good for generalizing performance at the draft level, classifying drafts, and high-level analyses joining in player data.
     
-    The next two dfs are the t1/t3 performance where a row is a given pick of a draft (e.g. ID 1, pick 1) where each column is the t1/t3
-    accuracy at a given pick, represented with a boolean 1/0. The value from this df is to understand behavior at certain picks and create
-    the accuracy-by-turn graphics"""
-    #For every agent we're evaluating, let's get a boolean column that tells us whether or not we matched
-    t1_sums = []
-    t3_sums = []
+#     The next two dfs are the t1/t3 performance where a row is a given pick of a draft (e.g. ID 1, pick 1) where each column is the t1/t3
+#     accuracy at a given pick, represented with a boolean 1/0. The value from this df is to understand behavior at certain picks and create
+#     the accuracy-by-turn graphics"""
+#     #For every agent we're evaluating, let's get a boolean column that tells us whether or not we matched
+#     t1_sums = []
+#     t3_sums = []
 
-    for agent in agent_names:
+#     for agent in agent_names:
 
-        #Dynamically creat these cols with same suffix
-        colname = agent + '_match'
-        df_matches[colname] = df_matches[agent] == df_matches['Real']
-        t1_sums.append(df_matches[colname].sum())
+#         #Dynamically creat these cols with same suffix
+#         colname = agent + '_match'
+#         df_matches[colname] = df_matches[agent] == df_matches['Real']
+#         t1_sums.append(df_matches[colname].sum())
 
-        t3_colname = agent + '_t3_match'
-        dft3[t3_colname] = dft3.apply(lambda x: x['Real'] in x[agent], axis=1)
-        t3_sums.append(dft3[t3_colname].sum())
+#         t3_colname = agent + '_t3_match'
+#         dft3[t3_colname] = dft3.apply(lambda x: x['Real'] in x[agent], axis=1)
+#         t3_sums.append(dft3[t3_colname].sum())
 
 
-    #List with sublists for values
-    final_output = [id]
-    final_output.extend(t1_sums)
-    final_output.extend(t3_sums)
+#     #List with sublists for values
+#     final_output = [id]
+#     final_output.extend(t1_sums)
+#     final_output.extend(t3_sums)
 
-    #Our columns will be ID, then agent t1 scores, then agent t3 scores
-    cols =["id"]
-    cols.extend([x+ "_t1_score" for x in agent_names])
-    cols.extend([x+ "_t3_score" for x in agent_names])
+#     #Our columns will be ID, then agent t1 scores, then agent t3 scores
+#     cols =["id"]
+#     cols.extend([x+ "_t1_score" for x in agent_names])
+#     cols.extend([x+ "_t3_score" for x in agent_names])
 
-    #Results dataframe with agents, t1sum, t3sum, and id)
-    results_dataframe = pd.DataFrame([final_output], columns=cols)
+#     #Results dataframe with agents, t1sum, t3sum, and id)
+#     results_dataframe = pd.DataFrame([final_output], columns=cols)
 
-    #Write the dataframe here that includes all of our simulation picks
-    results_str = "results_data/"+output_name
-    results_dataframe.to_csv(results_str, index=False)
+#     #Write the dataframe here that includes all of our simulation picks
+#     results_str = "results_data/"+output_name
+#     results_dataframe.to_csv(results_str, mode='a', header=(not os.path.exists(results_str)),index=False)
 
-    #let's also send our pick by pick performance data to our performance folder
-    #Create files to track t1/t3 accuracy and place them in the appropriate folder
-    t1_str = 'performance_data/' + output_name.replace(r'.csv','_t1_performance.csv')
-    df_matches.to_csv(t1_str,mode='a',header=(not os.path.exists(t1_str)), index=False)
+#     #Add ID Data to our Key Files
+#     df_matches['id'] = id
+#     dft3['id'] = id
 
-    #Same process as aobve, but for t3 performance
-    t3_str = 'performance_data/' +output_name.replace(r'.csv','_t3_performance.csv')
-    dft3.to_csv(t3_str, mode='a',header=(not os.path.exists(t3_str)), index=False)
+#     #let's also send our pick by pick performance data to our performance folder
+#     #Create files to track t1/t3 accuracy and place them in the appropriate folder
+#     t1_str = 'performance_data/' + output_name.replace(r'.csv','_t1_performance.csv')
+#     df_matches.to_csv(t1_str,mode='a',header=(not os.path.exists(t1_str)), index=False)
 
-def generate_index_residual_delta_df(df_matches:pd.DataFrame, psd:object, scores:list,array_keys:list,agent_names:list, output_name:list):
+#     #Same process as aobve, but for t3 performance
+#     t3_str = 'performance_data/' +output_name.replace(r'.csv','_t3_performance.csv')
+#     dft3.to_csv(t3_str, mode='a',header=(not os.path.exists(t3_str)), index=False)
+
+def generate_index_residual_delta_df(df_matches:pd.DataFrame, psd:object, scores:list,array_keys:list,agent_names:list, output_name:list,suffix:str):
 
     #We will start with one df with the deltas
      idx_df = pd.DataFrame(scores,columns=agent_names)
@@ -212,6 +211,7 @@ def generate_index_residual_delta_df(df_matches:pd.DataFrame, psd:object, scores
 
      #We will add the real and ID columns to our data so we can join them
      idx_df['Real'] = df_matches['Real']
+     idx_df['id'] = df_matches['id']
 
     #Combine the two dfs horizontally
      idx_df = pd.concat([idx_df,keys_df],axis=1)
@@ -248,7 +248,7 @@ def generate_index_residual_delta_df(df_matches:pd.DataFrame, psd:object, scores
          idx_df[norm_delta_colname] = idx_df.apply(lambda x: (norm[tuple(x[agent_col_key])].max() - norm[tuple(x[idx_colname])]), axis=1)
 
      #Write the dataframe here that includes all of our simulation picks
-     index_str = "index_data/"+output_name.replace(r'.csv','_index.csv')
+     index_str = "index_data/"+output_name.replace(r'{suffix}','_index_{suffix}'.format(suffix=suffix))
      idx_df.to_csv(index_str, mode='a',header=(not os.path.exists(index_str)), index=False)
 
 ##MODULE FUNCTIONS 
@@ -352,11 +352,13 @@ min_max_scale:bool=False,color_str:str='IWD',min_max_range:tuple=(1,5)):
     df_output.to_csv(output_filename, index=False)
 
 #ADDING IN NEW DATA OUTPUTS 4/10/22
-def simulation_generator(draft_dump_path, weights_path, agents, 
-nrows=42000, pick_index=11, cards_per_draft=42):
+def simulation_generator(suffix:str, draft_dump_path:str, weights_path:str, agents:list, 
+nrows:int=42000, pick_index:int=11, cards_per_draft:int=42):
     """Run simulations with out closed circuit bots on real 17lands data by taking a dump of picks, a weights file,
     a list of instantiated agent classes, the number of rows to select, the position of the pick column in the dump file,
     and the cards in the draft to validate that we do not assess partial/incomplete drafts to keep data high quality.
+
+    The prefix is a label you can add to label experiments e.g. "medium_" + path tells me I did the medium exp. with certain files
 
     This function returns several CSV files and will store them in certain folders:
     results_data/results csv -> rows represent a single draft (marked by ID), columns are # picks correct by agent and # times the bot matches the top 3 in the pack.
@@ -377,8 +379,8 @@ nrows=42000, pick_index=11, cards_per_draft=42):
     df = pd.read_csv(draft_dump_path,nrows=nrows)
 
     #Add automated stamps to our data so we can version it; start by taking weight set used, then add n_drafts
-    output_name = weights_path.replace(r'.csv','_{}.csv').format(str(int(nrows/cards_per_draft)))
-    output_name = output_name.replace(r'weights_data/processed_weights','')
+    output_name = weights_path.replace(r'.csv','_{num}_{suffix}.csv').format(num=str(int(nrows/cards_per_draft)), suffix=suffix)
+    output_name = output_name.replace(r'weights_data/processed_weights',"")
 
     #Pull our weights df and send to array
     weights_df =  pd.read_csv(weights_path)
@@ -403,7 +405,7 @@ nrows=42000, pick_index=11, cards_per_draft=42):
 
             #Create lists to hold totals for picks
             totals = []
-            totals_top3 = []
+            #totals_top3 = []
             scores = []
             array_keys = []
 
@@ -412,7 +414,7 @@ nrows=42000, pick_index=11, cards_per_draft=42):
 
                 #Create accumulator lists for the picks made by the bots (and top 3)
                 picks = []
-                top3_picks = [] 
+                #top3_picks = [] 
                 int_scores = []
                 int_array_keys = []
 
@@ -420,14 +422,17 @@ nrows=42000, pick_index=11, cards_per_draft=42):
                 for a in agents: 
 
                     #This function will generate the picks and add them accumulator
-                    generate_agent_selection_data(psd, a, n, picks, top3_picks, int_scores, int_array_keys)
+                    generate_agent_selection_data(psd, a, n, picks, int_scores, int_array_keys)
 
                 #Add in the actual pick to the end of the picks array in the final position
                 picks.append(draft_arrays['picks'][n].argmax())
 
                 #Append everything to our accumulator data structures
                 totals.append(picks)
-                totals_top3.append(top3_picks)
+
+                #T3 WORKFLOW DEPRECATED 
+                #totals_top3.append(top3_picks)
+
                 array_keys.append(int_array_keys)
                 scores.append(int_scores)
                 update_weights(psd, draft_arrays, n)
@@ -436,26 +441,31 @@ nrows=42000, pick_index=11, cards_per_draft=42):
             #Let's create some dataframes
             #The first one will hold whether or not we matched the picks
             df_matches = pd.DataFrame(totals, columns=match_cols)
-            dft3 = pd.DataFrame(totals_top3, columns = agent_names)
+
+            #T3 workflow deprecated in favor of processing post-simulation.
+            #dft3 = pd.DataFrame(totals_top3, columns = agent_names)
 
             #We can port over the real column for our top 3 df
-            dft3['Real'] = df_matches['Real']
+            #dft3['Real'] = df_matches['Real']
 
-            generate_accuracy_score_df(df_matches, dft3, id, agent_names, output_name)
-            generate_index_residual_delta_df(df_matches,psd,scores,array_keys,agent_names,output_name)
+            #generate_accuracy_score_df(df_matches, dft3, id, agent_names, output_name)
+
+            #INDEX FILE IS NEW SOURCE TABLE FOR PREPROCESSING FUNCTION
+            generate_index_residual_delta_df(df_matches,psd,scores,array_keys,agent_names,output_name,suffix)
                 
         except IndexError:
             print(id)
             pass
 
-def run_experiments(draft_str:str, agents:list, weights_list:list,n_iter=4200):
-    "Iterate through a list of weights, filenames, and agents to automatically generate our experiment data given"
+def run_experiments(dictionaries:list,string:str,weight_file_name):
+    """Iterate through a list dictionaries containing weights, filenames, and agents to automatically generate our experiment data given
+    The idea here being"""
 
     #for each item in our processed weights directory
-    for it in weights_list:
+    for d in dictionaries:
         #Iterate through our files
-        string = 'weights_data/processed_weights' + '/' + it 
-        simulation_generator(draft_str,string, agents, n_iter, 11)
+        string = 'weights_data/processed_weights' + '/' + weight_file_name
+        simulation_generator(d['suffix'],d['draft_str'],string, d['agents'], d['n_iter'], 11)
 
 ##ANALYSIS HELPER FUNCTIONS:
 def display_draftwise_results(result_path:str,include_t3_data=False,n_picks:int=42):
@@ -477,6 +487,8 @@ def display_draftwise_results(result_path:str,include_t3_data=False,n_picks:int=
     #Mean here is avg # of picks matched, so the rate is the avg/total picks
     results = df.mean()/n_picks
     results = results.sort_values(ascending=False)
+
+    print(results)
 
 def display_pickwise_results(performance_string:str, visualization:str='table'):
     """Present results that show % bots match human picks at the pick level. 
@@ -511,3 +523,54 @@ def display_pickwise_results(performance_string:str, visualization:str='table'):
 
         #Show off the plot
         plt.show()
+
+def open_index_file_and_preprocess(index_file_path:str,source_weights_file_path:str):
+    """Engineer all the features that we had in the other 3 filetypes, but do that from 1 source
+    file to reduce clutter in the repository. Given an index file, generate t1, t3, accuracies.
+    
+    OUTPUT: Df containing raw data for picks off, norm delta, bot score residual, t1 accuracy boolean, t3 accuracy boolean,
+    for each pick of each draft.There is one column for each of these per bot in the simulation (e.g. norm delta, picks off, accuracy for bot x),
+    so our data can get a bit wide. We can use regex search on the column names to pull out the subsets most relevant to our analysis (or future feature
+    engineering). Currently, some common analyses here would be to:
+    regex on t1_match (and create a column by cloning the id column and other relevant attributes from the original df) for t1 accuracy analysis
+    regex on picks off (and create necessary columns by cloning from source df) for understanding how good the bots are at each pick (can do this for norm + residual too)
+
+
+    Can join in data from the dump file to include win rates etc using the ID column for cross-sectional
+    analysis, and can join colors in given the weights source file. Since all of our source weight files have a convenient color column,
+    we can just use any of those files from the same set to get our weight columns without having to parse the set's JSON file"""
+
+    df = pd.read_csv(index_file_path)
+
+    #Iterate through each of our picks off columns to get the agent name (in theory could've been done w/ any other autogenerated column,
+    #since we can strip the suffix off whatever column as long as there is 1 per bot)
+    for x in list(df.filter(regex='picks_off').columns): 
+
+        #Set each column to numeric before doing the number matching here
+        df[x] = df[x].apply(pd.to_numeric, errors='coerce')
+
+        #Strip out the picks off part of the column name to get our agents themselves
+        x_str = x.replace('_picks_off','')
+
+        #Dynamically make t1 accuracy columns and names for the cols
+        t1_string = (x_str + "_t1_match")
+        df[t1_string] = np.where(df[x]==0,1,0)
+
+        #Dynamically make t3 accuracy columns
+        t3_string = (x_str + "_t3_match")
+        df[t3_string] = np.where(df[x]<=3,1,0)
+
+    #Now, let's add in the colors for each card in the dataset from our source weights file
+    source_df = pd.read_csv(source_weights_file_path)
+
+    colors = source_df['Color'].reset_index()
+
+    #Pull out the item from the colors index corresponding with the real pick
+    df['Real_colors'] = df.apply(lambda x: colors['Color'].iloc[x['Real']], axis=1)
+
+    #Replace nan with a single character N, so we can do single character color matching later
+    df['Real_colors'].replace({np.nan:"N"}, inplace=True)
+
+    return df
+
+#WANTS -> Pull, simulate 17lands style + equilibrium style, analyze
