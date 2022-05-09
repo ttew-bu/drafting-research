@@ -1,9 +1,10 @@
-#Agents.py 
 
+#Agents.py 
 #Import dependencies
 import math
 import numpy as np
 import random
+import bezier
 
 ##PASSING AND RECEIVING HEURISTIC BOTS
 #The bots below either have a bias toward cards that they see a lot of (or archetypes), or against cards/archs that the user has continually passed up
@@ -400,9 +401,11 @@ class Med_Agent:
 
   def __init__(self,
        name='med_agent',
-       arch_prefs:list=[0,1,2]):
-       self.name = name + '_archs_'+str(arch_prefs)
+       arch_prefs:list=[0,1,2],
+       archs:list=['WU','WB','WR','WG','UB','UR','UG','BR','BG','RG']):
+       self.name = name + '_archs_'+str(self.archs_selected)
        self.arch_prefs = arch_prefs
+       self.archs_selected = ''.join([str(archs[x]) + "_" for x in arch_prefs])
 
   def decision_function(self,pack,draft,drafter_position):
     '''Create decision function for agent that only looks at 2-3 archetypes'''
@@ -444,21 +447,25 @@ class Hard_Agent:
   until a point, then you are more concerned with what lines up with the arch you have bias for. Note that we still have a bias 
   term, even if it isn't super influential with this activation function
 
-  For the ln pattern, our bias function will be the ln of the pick num; same logic applies to the log10 choice (except it'll be a log with base 10)
-
-  NOT IMPLEMENTED YET: potentially a relu function where we 0 out the pool until some point and then the pool gets an increasing positive weight; also maybe a sigmoid,
-  though not sure what a S curve of bias means from a theoretical standpoint
-  
+  For the ln pattern, our bias function will be the ln of the pick num; same logic applies to the log10 choice (except it'll be a log with base 10
   """
 
   def __init__(self,
-  turn_range_one_end=8,
-  turn_range_two_start=16,
+  turn_range_one_end:int=8,
+  turn_range_two_start:int=16,
+  turn_range_two_end:int=24,
+  bias_start:int = 5,
+  bias_plateau:int = 1,
+  n_picks:int = 42,
   bias_function = 'linear'):
-       self.name = 'hard_agent' + "_" + str(turn_range_one_end) + '_' +str(turn_range_two_start) + '_' + str(bias_function)
+       self.name = 'hard_agent' + "_" + str(turn_range_one_end) + '_' +str(turn_range_two_start) + '_bstart_' + str(bias_start) +'_bplateau_' + str(bias_start) + "_" + str(bias_function)
        self.turn_range_one_end = turn_range_one_end
        self.turn_range_two_start = turn_range_two_start
        self.bias_function = bias_function
+       self.bias_start = bias_start
+       self.bias_plateau = bias_plateau
+       self.turn_range_two_end = turn_range_two_end
+       self.n_picks = n_picks
 
   def decision_function(self,pack,draft,drafter_position):
     '''Define how the basic agent calculates the optimal draft pick.
@@ -476,31 +483,82 @@ class Hard_Agent:
 
     #logic for linear model bias term
     if self.bias_function == 'linear':
+
+      #if we are before the bias term is supposed to plateau, we will use a linear relationship
+      #to bring us from the bias start to the plateau value in turn_range_one_end turns
       if picknum<=self.turn_range_one_end:
-        bias_coefficient = self.turn_range_one_end/picknum
-      else:
+          bias_coefficient = self.bias_start - (self.bias_start - self.bias_plateau) * (picknum/self.turn_range_one_end)
+
+      #If we are in the bias plateau (e.g between the two ranges in the piecewise function), then spit
+      #out the bias plateau
+      elif picknum>self.turn_range_one_end and picknum<self.turn_range_two_start:
+          bias_coefficient = self.bias_plateau
+
+      #If we are in the second range, we see a linear relationship going from the bias plateau to 0
+      elif picknum>=self.turn_range_two_start and picknum < self.turn_range_two_end:
+        bias_coefficient = self.bias_plateau - self.bias_plateau * ((picknum - self.turn_range_two_start)/(self.turn_range_two_end-self.turn_range_two_start))
+
+    else:
         bias_coefficient = 0
 
-    #logic for ln bias term
-    if self.bias_function == 'ln':
+    #If we want a smooth curve between the pieces of the function, use a bezier curve
+    #across a linear space of n_turns in each range
+    if self.bias_function == 'bezier':
+
+      #generate a bezier curve object for both of our curves in the piecewise function
+      initial_bezier_components = np.array([
+        [1.0, self.turn_range_one_end/2, float(self.turn_range_one_end)],
+        [float(self.bias_start), float(self.bias_plateau), float(self.bias_plateau)],
+    ])
+      initial_curve = bezier.Curve(initial_bezier_components, degree=2)
+
+      #Since the bezier curve spits out our expected bias value (y) in the range 0-1 for x
+      #Create a linspace between those bounds and pull out equally spaced points to get 
+      #our values at each pick number between pick 1 and the plateau point
+      initial_linspace = np.linspace(0,1,self.turn_range_one_end)
+
+
+      #generate a bezier curve object for both of our curves in the piecewise function
+      secondary_bezier_components = np.array([
+        [float(self.turn_range_two_start), float((self.turn_range_two_start + self.turn_range_two_end)/2), float(self.turn_range_two_end)],
+        [float(self.bias_start), float(self.bias_plateau), float(self.bias_plateau)],
+    ])
+
+      #Create another bezier curve that represents the decay that occurs in the post-plateau range
+      secondary_curve = bezier.Curve(secondary_bezier_components, degree=2)
+
+      #Create a linespace w/ equally spaced positions across the number of picks in range 2 to estimate the bias coefficient
+      secondary_linspace = np.linspace(0,1,(self.turn_range_two_end - self.turn_range_two_start))
+
+      #If we are before the plateau, generate utilize the bezier curve
       if picknum<=self.turn_range_one_end:
-        bias_coefficient = 1 + np.log(self.turn_range_one_end/picknum)
+
+        #Here, we'll take picknumber as our index on the curve (e.g. what is the value in the linspace for pick 4 and solve for that bias term)
+        #We pull position 1 out of the evaluation output here because we only want one coordinate, not the array pairs, from the Bezier curve
+        bias_coefficient = initial_curve.evaluate(initial_linspace[picknum])[1]
+
+      #Spit out the bias coefficient as the bias plateau if we are in the plateau range
+      elif picknum>self.turn_range_one_end and picknum<self.turn_range_two_start:
+
+        bias_coefficient = self.bias_plateau
+
+      #If we are in the second range, we use the secondary linspace
+      elif picknum>=self.turn_range_two_start and picknum < self.turn_range_two_end:
+
+        #Here, we use picknum - range start to get the position in the linspace because that will spit out a 0 for the first
+        #index in our list as we need and will give us the correct indexes from turn_range_two_start onward
+        bias_coefficient = secondary_curve.evaluate(secondary_linspace[(picknum - self.turn_range_two_start)])[1]
 
       else:
         bias_coefficient = 0
-
-    #logic for log10 bias term
-    if self.bias_function == 'log10':
-      if picknum<self.turn_range_one_end:
-        bias_coefficient = 1 + np.log10(self.turn_range_one_end/picknum)
-      else:
-        bias_coefficient = 0
-
-      
+   
+   #Once we spit out the bias coeffcient, normally calculate our cards except we will add in the bias constant on top of all arch scores
     pack_archetype_weights = (
             pack.reshape((draft.set.n_cards,1)) *
             draft.archetype_weights.reshape((draft.set.n_cards, draft.n_archetypes)))
 
+    #Score our prefs as the einsum of the arrays cards x archs (e.g. 272, 10) -> flat array of length cards with values for their scores given the 
+    #archetype preference scores.
     preferences = np.einsum("ca,a->c",pack_archetype_weights, (bias_coefficient+draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes))))
 
     return preferences
