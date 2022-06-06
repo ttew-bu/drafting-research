@@ -26,9 +26,11 @@ class mtg_etl_client:
     you can do that on new processed_weights files, but you do not need to redo this workflow since the source data
     is already saved in the source_weights folder"""
 
-    def __init__(self, url:str='https://www.17lands.com/card_ratings', 
+    def __init__(self, abs_path_to_dir:str,
+    url:str='https://www.17lands.com/card_ratings', 
     archetypes:list=['WU','WB','WR','WG','UB','UR','UG','BR','BG','RG'], 
     expansion:str="VOW",headless:bool=True):
+        self.abs_path = abs_path_to_dir
         self.url = url
         self.archetypes = archetypes
         self.expansion = expansion
@@ -39,6 +41,7 @@ class mtg_etl_client:
         pull the raw data. Also need to add path to selenium chromedriver executable file
         to run this function"""
 
+        #Create a chromedriver instance that is either headless, or will show you what it is doing on the screen
         if self.headless == True:
 
             #If we're going headless, initialize your settings and add headless browsing to the driver
@@ -49,60 +52,61 @@ class mtg_etl_client:
         else:
             driver = webdriver.Chrome(executable_path=chromedriver_path)
 
-            try:
+        #Once the driver is instantiated, try to extract data from the overall page and the pages for each archetype's subvalues. 
+        try:
 
-                #get the url in the driver, use either URL or URL_two depending on which page you're trying to scrape
-                driver.get(self.url)
+            #get the url in the driver, use either URL or URL_two depending on which page you're trying to scrape
+            driver.get(self.url)
 
+            #Now let's make sure that we are choosing the right set
+            select = Select(driver.find_element_by_id('expansion'))
+
+            # select by visible text
+            select.select_by_visible_text(self.expansion)
+
+            #Wait for our table body to load
+            table = WebDriverWait(driver, 20).until(EC.visibility_of_element_located(
+                (By.XPATH, '//tbody')))
+
+            #Grab the page source
+            html=driver.page_source
+
+            #5 second cooldown 
+            time.sleep(5)
+
+            #Create list of html tables that we will later iterate through
+            html_list = []
+            for arch in self.archetypes:
                 #Now let's make sure that we are choosing the right set
-                select = Select(driver.find_element_by_id('expansion'))
+                select = Select(driver.find_element_by_id('deck_color'))
 
                 # select by visible text
-                select.select_by_visible_text(self.expansion)
+                select.select_by_visible_text(arch)
 
                 #Wait for our table body to load
                 table = WebDriverWait(driver, 20).until(EC.visibility_of_element_located(
-                    (By.XPATH, '//tbody')))
+                (By.XPATH, '//tbody')))
 
                 #Grab the page source
-                html=driver.page_source
+                new_html=driver.page_source
 
-                #5 second cooldown 
+                html_list.append(new_html)
+
+                #5 second cooldown between refreshes to be nice to target page
                 time.sleep(5)
 
-                #Create list of html tables that we will later iterate through
-                html_list = []
-                for arch in self.archetypes:
-                    #Now let's make sure that we are choosing the right set
-                    select = Select(driver.find_element_by_id('deck_color'))
+            driver.quit()
 
-                    # select by visible text
-                    select.select_by_visible_text(arch)
+            #Once we have shut down our driver, return the list of html stored in list as part of the client
+            self.html_list = html_list
 
-                    #Wait for our table body to load
-                    table = WebDriverWait(driver, 20).until(EC.visibility_of_element_located(
-                    (By.XPATH, '//tbody')))
+        #If something times out, let us know
+        except TimeoutError as tie:
+            #Error Handling 
+            print("Exception " +tie+ 'has occured')
+            driver.quit()
 
-                    #Grab the page source
-                    new_html=driver.page_source
-
-                    html_list.append(new_html)
-
-                    #5 second cooldown between refreshes to be nice to target page
-                    time.sleep(5)
-
-                driver.quit()
-
-                #Once we have shut down our driver, return the list of html stored in list as part of the client
-                self.html_list = html_list
-    
-    #If something times out, let us know
-            except TimeoutError as tie:
-                #Error Handling 
-                print("Exception " +tie+ 'has occured')
-                driver.quit()
-
-                self.html_list = None
+            self.html_list = None
         
     def parse_html_to_raw_df(self, target_cols:list):
         """Given pipeline object with valid html list, 
@@ -110,26 +114,27 @@ class mtg_etl_client:
         certain target columns for use in weight generation"""
 
         #Create a row of the table for the data generated when there is no archetype selected
+        soup = BeautifulSoup(self.html_list[0],'html.parser')
         div = soup.select_one('table')
 
-        #This also allows us to keep color info rarity, etc. 
+        #Parse the HTML Table into the static attributes for the card so we can continually join on these keys
+        #or store them for later
         source_table = pd.read_html(div.prettify())[0]
+        source_table = source_table.loc[:,['Name','Color','Rarity']]
 
         #Iterate through the 17lands dataframe for each
         for idx, tbl in enumerate(self.html_list):
 
             #Since we need name as a join key later, make sure it is in the dataframe as it is processed
-            if 'Name' in target_cols == False:
+            if 'Name' not in target_cols:
                 target_cols.append('Name')
-
 
             #Use beautifulsoup to parse for our card ranking table and select it
             soup = BeautifulSoup(tbl,'html.parser')
             div = soup.select_one('table')
 
-
             #Convert the html to a dataframe
-            new_table = pd.read_html(div.prettify())[0].loc[:,target_cols]
+            new_table = pd.read_html(div.prettify())[0]
             new_table = new_table.loc[:,target_cols]
 
             #pp and % are the only non-number characters that could occur in the columns we want to be numeric
@@ -137,38 +142,88 @@ class mtg_etl_client:
             target_cols_noname = target_cols
             target_cols_noname.remove('Name')
 
+            #Iterate through non-name target columns to do cleanup
             for col in target_cols_noname:
-                new_table[col].str.replace('[a-zA-Z%]', '', regex=True)
 
+                #Convert everything to string for operations, will be converted back later
+                new_table[col] = new_table[col].astype(str)
+
+                #If there is a stray percentage or text in column, remove it and convert the string value to float
+                new_table[col] = new_table[col].str.replace('[a-zA-Z%]', '', regex=True)
+
+                #If the column has no value, by default we will just apply a zero here
+                new_table[col] = new_table[col].str.replace('', '0', regex=True)
+                
+                #Make sure everything we want numeric is numeric
+                new_table[col] = new_table[col].astype(float)
+
+            #Join in the new columns based on the Name of the card
             source_table = source_table.merge(right=new_table,how='inner',on='Name',suffixes=[None," " + self.archetypes[idx]])
 
-        #Now that we are done parsing, let's apply basic cleaning to make everything numeric
-        target_cols
-
+        #Last step is to correct the labels for the first columns (the archnames get omitted on the first merge)
+        for t in target_cols:
+            corrected_name = t + " " + self.archetypes[0]
+            source_table.rename(columns={t: corrected_name}, inplace=True)
 
         #Once we are done parsing together the dataframes and doing basic cleaning return the source table
         #Don't store it on the class so you can build multiple datasets from one 17lands pull
         return source_table
 
-    # def generate_computed_column_from_raw_targets(self:object, target_column1:str, 
-    # target_column2:str, output_colname:str):
-    #     """OPTIONAL PIPELINE STEP: if you took >1 column in the parsing step because you wanted to 
-    #     create a column by interacting >1 column, use the basic operations here (or add in logic as use cases arise)
-    #     to perform your transformations. For now, logic will just work for 2 columns since that was the basic use case"""
+    def generate_computed_column_from_raw_targets(self:object, target_df:pd.DataFrame, target_column1:str, 
+    target_column2:str, output_colname:str,operation:str):
+        """OPTIONAL PIPELINE STEP: if you took >1 column in the parsing step because you wanted to 
+        create a column by interacting >1 column, use the basic operations here (or add in logic as use cases arise)
+        to perform your transformations. For now, logic will just work for 2 columns since that was the basic use case
+        
+        The target colname should be the pattern for the column you're looking for (e.g. IWD, GPWR); the function
+        will take care of generating a per-archetype column for you/searching for the per archetype values. 
+
+        Operations are currently col2 + col1 (add), col2-col1 (subtract), col2 * col1 (multiply), col2 / col1(div)"""
+
+        #For every archetype we'd have a column for, automatically generate new columns of the calculated weight
+        #column we would like
+        for arch in self.archetypes:
+
+            #Create new colname
+            adapted_colname = output_colname + "_" + arch
+
+            #Algorithmically update each amogus
+            adapted_target1 = target_column1 + " " + arch
+            adapted_target2 = target_column2 + " " + arch
+
+            #Depending on our operation, we will apply a given function (note column 1 always comes before column 2)
+            if operation == 'add':
+                target_df[adapted_colname] =target_df[adapted_target1] + target_df[adapted_target2]
+
+            elif operation == 'subtract':
+                target_df[adapted_colname] =target_df[adapted_target1] - target_df[adapted_target2]
+
+            elif operation == 'multiply':
+                target_df[adapted_colname] =target_df[adapted_target1] * target_df[adapted_target2]
+
+            elif operation == 'div':
+                target_df[adapted_colname] =target_df[adapted_target1] / target_df[adapted_target2]
+
+            #Drop columns used to make computed column and move to the next arch's set of columns
+            target_df.drop(columns=[adapted_target1,adapted_target2], inplace=True)
+
+        return target_df
 
         
-    def process_raw_client_df_to_source_csv(self:object,df:pd.DataFrame,output_colname:str):
+    def process_raw_client_df_to_source_csv(self:object,df:pd.DataFrame,file_string_addition:str):
         """Given a raw df processed by the etl class, create a source dataframe ready to be preprocessed further,
         used in single pick experiments or be JSONified used in equilibrium experiments"""
 
-        filename = self.expansion + "_Weights_default_" + output_colname + "_df.csv"
+        filename = self.expansion + "_Weights_default_" + file_string_addition + "_df.csv"
         #Create value to algorithmically pull the generated correct columns, whether optional step is used or not
         alg_posn = -1 * len(self.archetypes)
         
-        df_archvals = df.iloc[:,alg_posn:].columns.values
+        df_archvals_cols = df.iloc[:,alg_posn:].columns.values
 
         #add in name and color columns to our source dataframe
-        df_archvals = df_archvals.append(df_archvals,['Name','Color'])
+        df_archvals_cols = np.append(df_archvals_cols,['Name','Color'])
+
+        df_archvals = df.loc[:,df_archvals_cols]
 
         #Now we deal with the weights of the missing lands by always giving them a 0
         #the intuition here being there is no incentive to take a basic land instead of a regular card
@@ -192,19 +247,20 @@ class mtg_etl_client:
 
         #Add the lands to the df and sort all by name; create new index too
         final_weights_df = pd.concat([df_archvals, dummies_df]).sort_values(by='Name').reset_index(drop=True)
-        final_weights_df = final_weights_df.loc[:, final_weights_df.columns != 'IWD']
 
         #Since we are done creating our source weight file, ship it off to the source weights folder
-        final_weights_df.to_csv("weights_data/source_weights/"+filename, index=False)
+        final_weights_df.to_csv(self.abs_path + "weights_data/source_weights/"+filename, index=False)
 
 class mtg_processed_csv_json_generator:
-    def __init__(self, default_df_name:str, 
+    def __init__(self, abs_dir_path:str,default_df_name:str, 
     target_col_suffixes:str,
     archetypes:list=['WU','WB','WR','WG','UB','UR','UG','BR','BG','RG']
     ):
         self.archetypes = archetypes
+        self.abs_path = abs_dir_path
         self.target_col_suffixes = target_col_suffixes
-        self.df = pd.read_csv("weights_data/source_weights/"+self.default_df_name)
+        self.default_df_name = default_df_name
+        self.df = pd.read_csv(abs_dir_path+"weights_data/source_weights/"+default_df_name)
 
     def convert_source_df_to_processed_df(self,zero_out_noncolor_archs:bool=False,
     min_max_scale:bool=False, min_max_range:tuple=(1,5)):
@@ -225,7 +281,7 @@ class mtg_processed_csv_json_generator:
         will get archetype values replaced whenever the archetype does not contain blue or black)'''
 
         #Remove nomenclature from the input file and conv
-        output_filename = self.default_df_name.replace(r'_default_','').replace(r'_df.csv','.csv')
+        output_filename = self.default_df_name.replace(r'_default','').replace(r'_df.csv','.csv')
 
         #Strip out IWD from titles so we can regex match the color column to the archs
         self.df.columns = self.df.columns.str.replace(r'{}'.format(self.target_col_suffixes), '')
@@ -287,17 +343,16 @@ class mtg_processed_csv_json_generator:
         #Use default mm scaler
         if min_max_scale == True:
 
+            #Generate minmax scaler and apply it so that there is one "max" value per archetype 
+            #(e.g. of the 272 cards in arch 1, the range is 1-5 and you do this for each arch)
             scaler = MinMaxScaler(feature_range=min_max_range)
-
-            weights_array = scaler.fit_transform(weights_array.reshape((len(self.archetypes),self.df.shape[0])))
-
-            weights_array = weights_array.reshape((self.df.shape[0],len(self.archetypes)))
+            weights_array = scaler.fit_transform(weights_array.reshape((self.df.shape[0],len(self.archetypes))))
 
             #Add in the naming convention if we generated a set like this
             output_filename = output_filename.replace(r'.csv','_minmax.csv')
 
         self.processed_filename = output_filename
-        self.processed_df = df_output = pd.DataFrame(weights_array)
+        self.processed_df = pd.DataFrame(weights_array)
 
 
     def write_to_processed_csv(self):
@@ -306,7 +361,7 @@ class mtg_processed_csv_json_generator:
 
             #If the filename is currently for a json ending, return it to csv ending
             self.processed_filename = self.processed_filename.replace('.json','.csv')
-            self.processed_df.to_csv(self.processed_filename, index=False)
+            self.processed_df.to_csv(self.abs_path + '/weights_data/processed_weights/' + self.processed_filename, index=False)
 
     def write_to_json_weights_writeback(self):
         """Write our weights array to a JSON that can be used in equilibrium experiments"""
@@ -317,12 +372,12 @@ class mtg_processed_csv_json_generator:
         self.processed_df['name'] = self.df['Name']
 
         #Make the name the dict key with the weight arrays being the values
-        json_content = self.processed_df['name'].set_index('name').T.to_dict()
+        json_content = self.processed_df.set_index('name').T.to_dict()
 
         #Replace CSV ending with JSON
         json_filename = self.processed_filename.replace('.csv','.json')
         #Dump the file to the designated path
-        with open(json_filename,"w+", encoding='utf-8') as fp:
+        with open(self.abs_path + '/json_files/' +json_filename,"w+", encoding='utf-8') as fp:
             json.dump(json_content, fp, ensure_ascii=False)
 
         #Drop the name column in case you're writing to JSON first
@@ -337,12 +392,14 @@ class mtg_set_writeback_generator:
     file per set that you want to run equilibrium experiments on. 
     """
 
-    def __init__(self, mtg_json_path:str, 
+    def __init__(self,mtg_json_path:str,
     default_weight_df_path:str,
-    expansion:str="VOW"):
+    expansion:str="VOW",
+    abs_path_to_dir="C:/Users/trist/OneDrive/Desktop/drafting-research/"):
         self.mtg_json_path = mtg_json_path
         self.expansion = expansion
         self.default_weight_df_path = default_weight_df_path
+        self.abs_path = abs_path_to_dir
 
 
     def generate_writeback(self):
@@ -352,7 +409,7 @@ class mtg_set_writeback_generator:
         generation"""
         cardnames = []
         cards = []
-        with open(self.mtg_json_path, encoding="utf8") as f:
+        with open(self.abs_path + self.mtg_json_path, encoding="utf8") as f:
             data = json.load(f)
             
             #Iterate through each card in the raw json file
@@ -398,13 +455,13 @@ class mtg_set_writeback_generator:
         self.raw_writeback = cards
         self.writeback_cardsnames = cardnames
     
-    def validate_writeback(self:object, default_weights_df_path_for_set:pd.DataFrame):
+    def validate_writeback(self:object):
         """Compare the cards in our writeback to the cards in the cards in the weights df
         and highlight any descrepancies in cardnames/cards. With descrepancies highlighted,
         you can manually edit/remove items from this class' cardlist before writing to json"""
 
         #Load in weight files for the set and get sets of the cardnames
-        df = pd.read_csv(default_weights_df_path_for_set)
+        df = pd.read_csv(self.abs_path + self.default_weight_df_path)
         nameset = set(df['Name'])
         cardset = set(self.writeback_cardsnames)
 
@@ -435,7 +492,7 @@ class mtg_set_writeback_generator:
 
         if self.validation_flag == True:
             #Autogenerate the name based on expansion in init function
-            fname = "json_files/" + prefix + "_" + self.expansion + "_writeback.json"
+            fname = self.abs_path + "json_files/" + prefix + "_" + self.expansion + "_writeback.json"
 
             #open our new file and dump the validated writeback in
             with open(fname, "w+", encoding="utf8") as f:
