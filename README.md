@@ -59,7 +59,7 @@ This folder holds highly raw files from experiments involving human pick data; i
 pip install -r requirements.txt
 
 ### Due to size constraints with GitHub, only a subset of the data is saved directly with this repository. 
-To access the draft dump, complete weights, etc. please reach out to ttew@bu.edu for the complete data (note that you probably want 5-10 gigabytes handy if you really want every file). 
+To access the draft dump, complete weights, etc. please check out this Google Drive folder: https://drive.google.com/drive/folders/1X1DBADANd_ADcV1aHnYlpdkXgTf28pD_?usp=sharing (Note you'll need 5-10 gigabytes of storage for everything hosted here; place all files in the Google Drive at the top level of this repo to use the files)
 
 ### Note that Selenium may require slightly more work (especially the install of Chromedriver)
 check out this link for more detail on complete install directions: https://selenium-python.readthedocs.io/installation.html
