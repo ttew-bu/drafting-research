@@ -230,16 +230,15 @@ class Basic_Agent:
     #Last card, we just take what's left
     if np.sum(pack)==1:
       preferences = pack
-
+#       print('lastcard basic')
       return preferences
 
     else:
-      pack_archetype_weights = (
-            pack.reshape((draft.set.n_cards,1)) *
+      pack_archetype_weights = (pack.reshape((draft.set.n_cards,1)) *
             draft.archetype_weights.reshape((draft.set.n_cards, draft.n_archetypes)))
 
       preferences = np.einsum("ca,a->c",pack_archetype_weights, draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes)))
-
+      
       return preferences
 
 class Greedy_Agent:
@@ -311,12 +310,15 @@ class Force_K_Agent:
     #Note that this does NOT reset per pack, but rather at the
     #draft-drafter level 
     picknum = np.sum(draft.picks[drafter_position]) + 1
-
+    #Last card in pack always get picked, no math needed (returns an array with 1 zero and we'll automatically pick that as max)
+    
     #Last card in pack always get picked, no math needed (returns an array with 1 zero and we'll automatically pick that as max)
     if np.sum(pack)==1:
 
       #Again, this is an array with only one card with a value of one; this is the auto-max and gets chosen
       preferences = pack
+#       print(np.where(pack==1))
+#       print('lastcard force')
 
       return preferences
 
@@ -403,9 +405,9 @@ class Med_Agent:
        name='med_agent',
        arch_prefs:list=[0,1,2],
        archs:list=['WU','WB','WR','WG','UB','UR','UG','BR','BG','RG']):
-       self.name = name + '_archs_'+str(self.archs_selected)
        self.arch_prefs = arch_prefs
        self.archs_selected = ''.join([str(archs[x]) + "_" for x in arch_prefs])
+       self.name = name + '_archs_'+str(self.archs_selected)
 
   def decision_function(self,pack,draft,drafter_position):
     '''Create decision function for agent that only looks at 2-3 archetypes'''
@@ -458,7 +460,7 @@ class Hard_Agent:
   bias_plateau:int = 1,
   n_picks:int = 42,
   bias_function = 'linear'):
-       self.name = 'hard_agent' + "_" + str(turn_range_one_end) + '_' +str(turn_range_two_start) + '_bstart_' + str(bias_start) +'_bplateau_' + str(bias_start) + "_" + str(bias_function)
+       self.name = 'hard_agent' + "_" + str(turn_range_one_end) + '_' +str(turn_range_two_start) + '_bstart_' + str(bias_start) +'_bplateau_' + str(bias_plateau) + "_" + str(bias_function)
        self.turn_range_one_end = turn_range_one_end
        self.turn_range_two_start = turn_range_two_start
        self.bias_function = bias_function
@@ -487,18 +489,21 @@ class Hard_Agent:
       #if we are before the bias term is supposed to plateau, we will use a linear relationship
       #to bring us from the bias start to the plateau value in turn_range_one_end turns
       if picknum<=self.turn_range_one_end:
-          bias_coefficient = self.bias_start - (self.bias_start - self.bias_plateau) * (picknum/self.turn_range_one_end)
+        bias_coefficient = self.bias_start - ((self.bias_start - self.bias_plateau) * (picknum/self.turn_range_one_end))
+
 
       #If we are in the bias plateau (e.g between the two ranges in the piecewise function), then spit
       #out the bias plateau
       elif picknum>self.turn_range_one_end and picknum<self.turn_range_two_start:
-          bias_coefficient = self.bias_plateau
+
+        bias_coefficient = self.bias_plateau
 
       #If we are in the second range, we see a linear relationship going from the bias plateau to 0
       elif picknum>=self.turn_range_two_start and picknum < self.turn_range_two_end:
-        bias_coefficient = self.bias_plateau - self.bias_plateau * ((picknum - self.turn_range_two_start)/(self.turn_range_two_end-self.turn_range_two_start))
 
-    else:
+        bias_coefficient = self.bias_plateau - self.bias_plateau * ((picknum - self.turn_range_two_start)/(self.turn_range_two_end-self.turn_range_two_start))
+      
+      else:
         bias_coefficient = 0
 
     #If we want a smooth curve between the pieces of the function, use a bezier curve
@@ -517,7 +522,6 @@ class Hard_Agent:
       #our values at each pick number between pick 1 and the plateau point
       initial_linspace = np.linspace(0,1,self.turn_range_one_end)
 
-
       #generate a bezier curve object for both of our curves in the piecewise function
       secondary_bezier_components = np.array([
         [float(self.turn_range_two_start), float((self.turn_range_two_start + self.turn_range_two_end)/2), float(self.turn_range_two_end)],
@@ -531,14 +535,14 @@ class Hard_Agent:
       secondary_linspace = np.linspace(0,1,(self.turn_range_two_end - self.turn_range_two_start))
 
       #If we are before the plateau, generate utilize the bezier curve
-      if picknum<=self.turn_range_one_end:
+      if picknum<self.turn_range_one_end:
 
         #Here, we'll take picknumber as our index on the curve (e.g. what is the value in the linspace for pick 4 and solve for that bias term)
         #We pull position 1 out of the evaluation output here because we only want one coordinate, not the array pairs, from the Bezier curve
         bias_coefficient = initial_curve.evaluate(initial_linspace[picknum])[1]
 
       #Spit out the bias coefficient as the bias plateau if we are in the plateau range
-      elif picknum>self.turn_range_one_end and picknum<self.turn_range_two_start:
+      elif picknum>=self.turn_range_one_end and picknum<self.turn_range_two_start:
 
         bias_coefficient = self.bias_plateau
 
