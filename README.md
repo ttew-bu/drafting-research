@@ -1,7 +1,6 @@
 # drafting-research
 Computational experimentation repository for Magic the Gathering drafts both against human picks experiments and against other bots. The intent of this repository is to hold the tools to collect/clean data for weights and cards to run the simulations, flexible infrastructure for both experiment types, and helper functions/rich data to run analyses on to answer questions around strategy selection in drafts. This repository powers research by Gerdus Benade and Tristan Tew of Boston University's Questrom School of Business. 
 
-
 ## There are 3 main modules in this repository:
 
 ### mtg_etl_pipeline.py
@@ -28,21 +27,31 @@ This holds txt_files of sample drafts with the following breakdown: 1 mythic/rar
 This folder holds 2 kinds of CSV files: baseline and diff files. The baseline data contains results of the experiments where there is the same strategy in all 8 seats of the draft; diff contains the results where 1 seat deviates to a given strategy. These datasets can tell us the 'benefit' associated with choosing a certain strategy given that of others and more generally, can show us how preferences change at a table under different circumstances. The schema for each of the tables is as follows:
 
 simid: id for the individual draft (e.g. 8 players, 3 rounds, 14 packs; there are 1000 simids in a simulation with 1000 iterations)
+
 player: seat # (e.g. one of the 8 players)
+
 0-10: scores for each archetype (these scores are calculated with the norms of each card in each archetype; e.g. adding app the scores in each archetype for the 42 cards selected)
+
 top_archetype_score: the max # from the 10 archetype columns
+
 top_arch_index: which archetype was the best (e.g. arch #3)
+
 majority_strategy: string of the bot name used by 7/8 seats 
+
 deviating_strategy: string of the bot used by 1/8 the seats
+
 deviating_seat: seat index of the deviating strategy
+
 experiment_date: timestamp of experiment (if run in batch, you can use this to see exactly which simulations you ran at a given point in time)
+
 weights_name: filepath of the JSON weights file used to compute picks for each agent
+
 packs_name: filepath of the txt file used to generate the picks (this is good for replicability of anything)
+
 batch_id: id for the entire batch of expirements (e.g. if you run 20 experiments at once, this number will be the same for all of the rows for those 20 experiments)
 
 ### index_data
 This folder holds highly raw files from experiments involving human pick data; it is recommended that you use the open_index_file_and_preprocess() function to parse the data into more usable data. These files are good to understand (and tune) performance for the agents in terms of matching human picks (both top 1 and top 3 accuracy) in addition to assessing accuracy under different input weight criteria. The (processed) schema for these tables looks as follows:
-
 
 # Repository Install Notes
 ### These packages work on Python 3.8.10 or higher and you can install the packages using the following:
