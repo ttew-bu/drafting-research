@@ -542,12 +542,9 @@ def generate_index_residual_delta_df(df_matches:pd.DataFrame, psd:object, scores
      index_str = "index_data/"+output_name.replace(r'{suffix}','_index_{suffix}'.format(suffix=suffix))
      idx_df.to_csv(index_str, mode='a',header=(not os.path.exists(index_str)), index=False)
 
-
 ##MODULE FUNCTIONS 
 #COMPLETE FUNCTIONS TO CALL FOR WEIGHT AND SIMULATIONS 
-
-#ADDING IN NEW DATA OUTPUTS 4/10/22
-def simulation_generator(suffix:str, draft_dump_path:str, weights_path:str, agents:list, 
+def run_human_pick_experiment(suffix:str, draft_dump_path:str, weights_path:str, agents:list, 
 nrows:int=42000, pick_index:int=11, cards_per_draft:int=42):
     """Run experiments on dump of human picks, a weights file, a list of instantiated agent classes, the number of rows to select, 
     the position of the pick column in the dump file, and the cards in the draft to validate that we do not assess partial/incomplete 
@@ -643,7 +640,7 @@ nrows:int=42000, pick_index:int=11, cards_per_draft:int=42):
             print(id)
             pass
 
-def run_experiments(dictionaries:list,weight_file_name):
+def human_pick_experiment_runner(dictionaries:list,weight_file_name):
     """Iterate through a list dictionaries containing weights, filenames, and agents to automatically generate our experiment data given
     The idea here being"""
 
@@ -651,8 +648,7 @@ def run_experiments(dictionaries:list,weight_file_name):
     for d in dictionaries:
         #Iterate through our files
         string = 'weights_data/processed_weights' + '/' + weight_file_name
-        simulation_generator(d['suffix'],d['draft_str'],string, d['agents'], d['n_iter'], 11)
-
+        run_human_pick_experiment(d['suffix'],d['draft_str'],string, d['agents'], d['n_iter'], 11)
 
 ##ANALYSIS HELPER FUNCTIONS:
 def display_draftwise_results(result_path:str,include_t3_data=False,n_picks:int=42):
@@ -760,9 +756,10 @@ def open_index_file_and_preprocess(index_file_path:str,source_weights_file_path:
 
     return df
 
-
 ##EQUILIBRIUM EXPERIMENT FUNCTIONS:
-def process_simulation_results(weight_path:str,df:pd.DataFrame,arch_list:list=[x for x in range(0,10)]):
+def process_simulation_results(weight_path:str,df:pd.DataFrame,
+arch_list:list=[x for x in range(0,10)],
+n_largest_for_norm:int=23):
     """Take our weights array, get the weights of chosen cards per archetype and 
     assess how strong/weak a deck is in archetypes"""
 
@@ -776,7 +773,7 @@ def process_simulation_results(weight_path:str,df:pd.DataFrame,arch_list:list=[x
         accum.append(list(norm_arrays[row['card']]))
     norm_vals = pd.DataFrame(accum)
     merged = pd.concat([df,norm_vals],axis=1)
-    merged = merged.groupby(['simid','player','draft_number'])[arch_list].sum()
+    merged = merged.groupby(['simid','player','draft_number'])[arch_list].apply(lambda grp: grp.nlargest(n_largest_for_norm).sum())
     merged['top_archetype_score'] = merged.max(axis=1)
     merged['top_archetype_index'] = merged.idxmax(axis=1)
     merged.reset_index(inplace=True)
