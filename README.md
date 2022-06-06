@@ -45,11 +45,12 @@ This folder holds highly raw files from experiments involving human pick data; i
 
 
 # Repository Install Notes
-These packages work on Python 3.8.10 or higher and you can install the packages using the following:
+### These packages work on Python 3.8.10 or higher and you can install the packages using the following:
 
 pip install -r requirements.txt
 
-### Due to size constraints with GitHub, only a subset of the data is saved directly with this repository. To access the draft dump, complete weights, etc. please reach out to ttew@bu.edu for the complete data (note that you probably want 5-10 gigabytes handy if you really want every file). 
+### Due to size constraints with GitHub, only a subset of the data is saved directly with this repository. 
+To access the draft dump, complete weights, etc. please reach out to ttew@bu.edu for the complete data (note that you probably want 5-10 gigabytes handy if you really want every file). 
 
 ### Note that Selenium may require slightly more work (especially the install of Chromedriver)
 check out this link for more detail on complete install directions: https://selenium-python.readthedocs.io/installation.html
