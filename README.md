@@ -1,5 +1,5 @@
 # drafting-research
-Computational experimentation repository for Magic the Gathering drafts both against human picks experiments and against other bots. The intent of this repository is to hold the tools to collect/clean data for weights and cards to run the simulations, flexible infrastructure for both experiment types, and helper functions/rich data to run analyses on to answer questions around strategy selection in drafts. 
+## Computational experimentation repository for Magic the Gathering drafts both against human picks experiments and against other bots. The intent of this repository is to hold the tools to collect/clean data for weights and cards to run the simulations, flexible infrastructure for both experiment types, and helper functions/rich data to run analyses on to answer questions around strategy selection in drafts. This repository powers research by Gerdus Benade and Tristan Tew of Boston University's Questrom School of Business. 
 
 
 ## There are 3 main modules in this repository:
@@ -44,17 +44,15 @@ batch_id: id for the entire batch of expirements (e.g. if you run 20 experiments
 This folder holds highly raw files from experiments involving human pick data; it is recommended that you use the open_index_file_and_preprocess() function to parse the data into more usable data. These files are good to understand (and tune) performance for the agents in terms of matching human picks (both top 1 and top 3 accuracy) in addition to assessing accuracy under different input weight criteria. The (processed) schema for these tables looks as follows:
 
 
-
-
 # Repository Install Notes
 These packages work on Python 3.8.10 or higher and you can install the packages using the following:
 
 pip install -r requirements.txt
 
-## Due to size constraints with GitHub, only a subset of the data is saved directly with this repository. To access the draft dump, complete weights, etc. please reach out to ttew@bu.edu for the complete data (note that you probably want 5-10 gigabytes handy if you really want every file). 
+### Due to size constraints with GitHub, only a subset of the data is saved directly with this repository. To access the draft dump, complete weights, etc. please reach out to ttew@bu.edu for the complete data (note that you probably want 5-10 gigabytes handy if you really want every file). 
 
-## Note that Selenium may require slightly more work (especially the install of Chromedriver)
+### Note that Selenium may require slightly more work (especially the install of Chromedriver)
 check out this link for more detail on complete install directions: https://selenium-python.readthedocs.io/installation.html
 
-## It is recommended that you use these modules in a virtualenv with a Python installation that is not downloaded via Anaconda. 
+### It is recommended that you use these modules in a virtualenv with a Python installation that is not downloaded via Anaconda. 
 This is because the Bezier module used to create smoother contours for one of the bot's bias terms struggles to work with Anaconda 
