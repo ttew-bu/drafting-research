@@ -1,5 +1,5 @@
 # drafting-research
-## Computational experimentation repository for Magic the Gathering drafts both against human picks experiments and against other bots. The intent of this repository is to hold the tools to collect/clean data for weights and cards to run the simulations, flexible infrastructure for both experiment types, and helper functions/rich data to run analyses on to answer questions around strategy selection in drafts. This repository powers research by Gerdus Benade and Tristan Tew of Boston University's Questrom School of Business. 
+Computational experimentation repository for Magic the Gathering drafts both against human picks experiments and against other bots. The intent of this repository is to hold the tools to collect/clean data for weights and cards to run the simulations, flexible infrastructure for both experiment types, and helper functions/rich data to run analyses on to answer questions around strategy selection in drafts. This repository powers research by Gerdus Benade and Tristan Tew of Boston University's Questrom School of Business. 
 
 
 ## There are 3 main modules in this repository:
