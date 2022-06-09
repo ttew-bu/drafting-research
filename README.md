@@ -63,7 +63,8 @@ This folder contains two subfolders: source_weights, which contains weights for 
 pip install -r requirements.txt
 
 ### Due to size constraints with GitHub, only a subset of the data is saved directly with this repository. 
-To access the draft dump, complete weights, etc. please check out this Google Drive folder:[ https://drive.google.com/drive/folders/0ALCO3qxrQkZXUk9PVA](https://drive.google.com/drive/folders/1X1DBADANd_ADcV1aHnYlpdkXgTf28pD_?usp=sharing)
+To access the draft dump, complete weights, etc. please check out this Google Drive folder:[ https://drive.google.com/drive/folders/0ALCO3qxrQkZXUk9PVA](https://drive.google.com/drive/folders/1X1DBADANd_ADcV1aHnYlpdkXgTf28pD_?usp=sharing). You can place all of the folders in the drive at the top level (e.g. inside of the drafting-research directory) on your local/virtual machine. 
+
 (Note you'll need 5-10 gigabytes of storage for everything hosted here; place all files in the Google Drive at the top level of this repo to use the files)
 
 ### Note that Selenium may require slightly more work (especially the install of Chromedriver)
