@@ -12,8 +12,7 @@ import json
 #they draw inspiration from the Matt Drury repo. You can find this link here:
 #https://github.com/madrury/mtg-draftbot
 
-##CLASS DEFS THAT ALLOW US TO USE BOTS BUILT FOR CLOSED-CIRCUIT SIMULATIONS 
-##TO RUN ON HUMAN DATA... ASK TRISTAN QUESTIONS ABOUT DOCUMENTATION AND WORKFLOW
+##CLASS DEFS THAT ALLOW US TO INSTANTIATE DRAFT INSTANCES (BOTH EQUILIBRIUM AND ON HUMAN PICKS)
 class PseudoSet:
     def __init__(self, weights_df):
             self.n_cards = weights_df.shape[0]
@@ -216,12 +215,12 @@ class MultiStratDraft:
         """Given our packs array and a binary switch (1 -> -1 -> 1 etc.)"""
         newx = np.zeros(arrays.shape)
 
-        #If positive, we go right
+        #If positive, we go right (e.g. cards go from seat 1 to seat 2)
         if switch>0:
             newx[0, :] = arrays[-1, :]
             newx[1:, :] = arrays[:-1, :]
 
-        #If negative, go left
+        #If negative, go left (e.g. cards go from seat 2 to seat 1)
         else:
             newx[-1, :] = arrays[0, :]
             newx[:-1, :] = arrays[1:, :]
@@ -383,8 +382,41 @@ class MultiStratDraft:
           picks[ridx, pick_idx] = 1
       return picks
 
-##HELPER FUNCTIONS
-#FUNCTIONS THAT EITHER DRIVE FOR WEIGHT/SIMS
+
+
+##EQUILIBRIUM EXPERIMENT FUNCTIONS:
+def generate_simulation_packs(n_packs:int=3,n_players:int=8,
+n_cards_in_pack:int=14,n_iter:int=100,n_cards_in_set:int=272,
+cards_path:str='json_files/VOW_writeback.json',
+weights_df_w_names:str='weights_data/source_weights/VOM_Weights_default__seen_rates_df.csv'):
+    """Generate a random sample of packs to run closed-circuit simulations on given
+    the parameters you intend to use on the draft"""
+
+    generator_set = Set(cards=json.load(open(cards_path))['cards'],
+    card_names=pd.read_csv(weights_df_w_names)['Name'])
+
+    draft_list = []
+    for x in range(0,n_iter):
+        print('pack '+str(x)+' start')
+        accum = []
+        for z in range(0,n_packs):
+            pack = generator_set.random_packs_array()
+            accum.append(pack)
+        draft_list.append(accum)
+    draft_list = np.array(draft_list)
+
+    name = 'draft_txt_files/draft_packs.txt'
+
+    name = name.replace('.txt',"_"+str(n_iter)+"_"+str(datetime.datetime.today().strftime('%Y_%m_%d')+".txt"))
+
+    with open(name, 'w') as filehandle:
+        json.dump(draft_list.tolist(),filehandle)
+
+    return None
+
+
+##HELPER FUNCTIONS AND CLASSES TO RUN SIMULATIONS OF DRAFTS (e.g. many iterations of the classes above and write to files)
+#FUNCTIONS THAT POWER INTERNAL PROCESSES TO RUN HUMAN PICK DRAFTS
 def create_pack_pick_pass_arrays(df:pd.DataFrame,id:str,pick_index:int=11):
     """Take our dump dataframe, id for the draft to check, and pick index to generate arrays
     for our simulations to run; this function will run every time we check out a new draft in 
@@ -545,7 +577,7 @@ def generate_index_residual_delta_df(df_matches:pd.DataFrame, psd:object, scores
 ##MODULE FUNCTIONS 
 #COMPLETE FUNCTIONS TO CALL FOR WEIGHT AND SIMULATIONS 
 def run_human_pick_experiment(suffix:str, draft_dump_path:str, weights_path:str, agents:list, 
-nrows:int=42000, pick_index:int=11, cards_per_draft:int=42):
+n_iter:int=1000, pick_index:int=11, cards_per_draft:int=42):
     """Run experiments on dump of human picks, a weights file, a list of instantiated agent classes, the number of rows to select, 
     the position of the pick column in the dump file, and the cards in the draft to validate that we do not assess partial/incomplete 
     drafts to keep data high quality.
@@ -563,10 +595,10 @@ nrows:int=42000, pick_index:int=11, cards_per_draft:int=42):
     """
 
     #Read weights csv
-    df = pd.read_csv(draft_dump_path,nrows=nrows)
+    df = pd.read_csv(draft_dump_path,nrows=n_iter*cards_per_draft)
 
     #Add automated stamps to our data so we can version it; start by taking weight set used, then add n_drafts
-    output_name = weights_path.replace(r'.csv','_{num}_{suffix}.csv').format(num=str(int(nrows/cards_per_draft)), suffix=suffix)
+    output_name = weights_path.replace(r'.csv','_{num}_{suffix}.csv').format(num=str(n_iter*cards_per_draft), suffix=suffix)
     output_name = output_name.replace(r'weights_data/processed_weights',"")
 
     #Pull our weights df and send to array
@@ -642,7 +674,8 @@ nrows:int=42000, pick_index:int=11, cards_per_draft:int=42):
 
 def human_pick_experiment_runner(dictionaries:list,weight_file_name):
     """Iterate through a list dictionaries containing weights, filenames, and agents to automatically generate our experiment data given
-    The idea here being"""
+    The idea here being if you want to run many experiments, it may be better to put all the inputs together in a dictionary as opposed to writing
+    many long function calls"""
 
     #for each item in our processed weights directory
     for d in dictionaries:
@@ -650,113 +683,8 @@ def human_pick_experiment_runner(dictionaries:list,weight_file_name):
         string = 'weights_data/processed_weights' + '/' + weight_file_name
         run_human_pick_experiment(d['suffix'],d['draft_str'],string, d['agents'], d['n_iter'], 11)
 
-##ANALYSIS HELPER FUNCTIONS:
-def display_draftwise_results(result_path:str,include_t3_data=False,n_picks:int=42):
-    """Present results that show what % the bots match 
-    human picks given the filename holding the picks"""
+#class equilibrium_experimentation_util():
 
-    #Read csv
-    df = pd.read_csv(result_path)
-
-    #Get rid of dummy index column
-    df = df.iloc[:,1:]
-
-    #If you also want to know about t3 data, you can set this flag to true
-    if include_t3_data == False:
-        
-        #Remove all cols that include the str t3
-        df = df.loc[:,~df.columns.str.contains('t3')]
-    
-    #Mean here is avg # of picks matched, so the rate is the avg/total picks
-    results = df.mean()/n_picks
-    results = results.sort_values(ascending=False)
-
-    print(results)
-
-def display_pickwise_results(performance_string:str, visualization:str='table'):
-    """Present results that show % bots match human picks at the pick level. 
-    That is, if there are 3 packs of 14 cards, then there are 42 picks at which
-    the bots will have different accuracies. Each multiple of 14 will have an
-    accuracy of 100% since you can only pick from one card at these points"""
-
-    df = pd.read_csv(performance_string)
-
-    df.rename(columns={'Unnamed: 0':'match_index'}, inplace=True)
-
-    #only include cols that keep track of our match boolean values
-    #also set all colnames to lowercase because some old files have diff capitilzation patterns
-    df.columns = df.columns.str.lower()
-    df = df.loc[:,df.columns.str.contains('match')]
-
-    #Sub out the text from our input file (Python isn't reading the T/F as boolean by default)
-    #df = df.replace({False: 0, True: 1})
-    output_df = df.groupby('match_index').mean()
-
-    #Print a df where we have 42 rows (1 per pick in a standard draft), where each bot has an accuracy %
-    if visualization=='table':
-        return output_df
-
-    #If you also want a plot, add this logic in here
-    else:
-    
-        df.groupby('match_index').mean().plot()
-
-        #Move legend off to the side
-        plt.legend(loc=(1.04,.35))
-
-        #Show off the plot
-        plt.show()
-
-def open_index_file_and_preprocess(index_file_path:str,source_weights_file_path:str):
-    """Engineer all the features that we had in the other 3 filetypes, but do that from 1 source
-    file to reduce clutter in the repository. Given an index file, generate t1, t3, accuracies.
-    
-    OUTPUT: Df containing raw data for picks off, norm delta, bot score residual, t1 accuracy boolean, t3 accuracy boolean,
-    for each pick of each draft.There is one column for each of these per bot in the simulation (e.g. norm delta, picks off, accuracy for bot x),
-    so our data can get a bit wide. We can use regex search on the column names to pull out the subsets most relevant to our analysis (or future feature
-    engineering). Currently, some common analyses here would be to:
-    regex on t1_match (and create a column by cloning the id column and other relevant attributes from the original df) for t1 accuracy analysis
-    regex on picks off (and create necessary columns by cloning from source df) for understanding how good the bots are at each pick (can do this for norm + residual too)
-
-
-    Can join in data from the dump file to include win rates etc using the ID column for cross-sectional
-    analysis, and can join colors in given the weights source file. Since all of our source weight files have a convenient color column,
-    we can just use any of those files from the same set to get our weight columns without having to parse the set's JSON file"""
-
-    df = pd.read_csv(index_file_path)
-
-    #Iterate through each of our picks off columns to get the agent name (in theory could've been done w/ any other autogenerated column,
-    #since we can strip the suffix off whatever column as long as there is 1 per bot)
-    for x in list(df.filter(regex='picks_off').columns): 
-
-        #Set each column to numeric before doing the number matching here
-        df[x] = df[x].apply(pd.to_numeric, errors='coerce')
-
-        #Strip out the picks off part of the column name to get our agents themselves
-        x_str = x.replace('_picks_off','')
-
-        #Dynamically make t1 accuracy columns and names for the cols
-        t1_string = (x_str + "_t1_match")
-        df[t1_string] = np.where(df[x]==0,1,0)
-
-        #Dynamically make t3 accuracy columns
-        t3_string = (x_str + "_t3_match")
-        df[t3_string] = np.where(df[x]<=3,1,0)
-
-    #Now, let's add in the colors for each card in the dataset from our source weights file
-    source_df = pd.read_csv(source_weights_file_path)
-
-    colors = source_df['Color'].reset_index()
-
-    #Pull out the item from the colors index corresponding with the real pick
-    df['Real_colors'] = df.apply(lambda x: colors['Color'].iloc[x['Real']], axis=1)
-
-    #Replace nan with a single character N, so we can do single character color matching later
-    df['Real_colors'].replace({np.nan:"N"}, inplace=True)
-
-    return df
-
-##EQUILIBRIUM EXPERIMENT FUNCTIONS:
 def process_simulation_results(weight_path:str,df:pd.DataFrame,
 arch_list:list=[x for x in range(0,10)],
 n_largest_for_norm:int=23):
@@ -767,56 +695,36 @@ n_largest_for_norm:int=23):
     weights_df = pd.read_csv(weight_path)
     norm_arrays = weights_df.to_numpy()
 
-    #Run accumulator pattern to see who 
+    #Run accumulator pattern to see who selected which cards and pull values for their arch scores out of the norm arrays
     accum = []
     for index,row in df.iterrows():
         accum.append(list(norm_arrays[row['card']]))
     norm_vals = pd.DataFrame(accum)
     merged = pd.concat([df,norm_vals],axis=1)
-    merged = merged.groupby(['simid','player','draft_number'])[arch_list].apply(lambda grp: grp.nlargest(n_largest_for_norm).sum())
+
+    #To get the archetype score per player, we will use the top N cards in each arch (this defaults to 23)
+    merged = merged.groupby(['simid','player','draft_number'])[arch_list].agg(lambda grp: grp.nlargest(n_largest_for_norm).sum())
+
+    #Create column to show top arch score and which arch was the top score
     merged['top_archetype_score'] = merged.max(axis=1)
     merged['top_archetype_index'] = merged.idxmax(axis=1)
     merged.reset_index(inplace=True)
     return merged
 
-def generate_simulation_packs(n_packs:int=3,n_players:int=8,
-n_cards_in_pack:int=14,n_iter:int=100,n_cards_in_set:int=272,
-cards_path:str='utility_files/VOW_writeback.json',
-weights_df_w_names:str='weights_data/source_weights/VOM_Weights_default__seen_rates_df.csv'):
-    """Generate a random sample of packs to run closed-circuit simulations on given
-    the parameters you intend to use on the draft"""
-
-    generator_set = Set(cards=json.load(open(cards_path))['cards'],
-    card_names=pd.read_csv(weights_df_w_names)['Name'])
-
-    draft_list = []
-    for x in range(0,n_iter):
-        print('pack '+str(x)+' start')
-        accum = []
-        for z in range(0,n_packs):
-            pack = generator_set.random_packs_array()
-            accum.append(pack)
-        draft_list.append(accum)
-    draft_list = np.array(draft_list)
-
-    name = 'utility_files/draft_packs.txt'
-
-    name = name.replace('.txt',"_"+str(n_iter)+"_"+str(datetime.datetime.today().strftime('%Y_%m_%d')+".txt"))
-
-    with open(name, 'w') as filehandle:
-        json.dump(draft_list.tolist(),filehandle)
-
-    return None
-
-def comp_generator(num_iter:int,
+def equilibrium_experiment_runner(num_iter:int,
 agents:list,
-baseline_agents:list,n_cards_in_pack:int,rounds:int,
+baseline_agents:list,
+n_cards_in_pack:int,
+rounds:int,
 cards_path:str,
 weights_json_path:str,
 weights_df_path:str, 
 packs_input_file:str,
+dirpath:str,
 batch_id:uuid,
-deviating_seat:int=0):
+deviating_seat:int=0,
+n_largest_for_norm:int=23,
+rotate_option:int=0):
     '''Streamline comparison of drafts and create outputs with player prefs;
     this gives us quick glances into how different arrangements '''
 
@@ -837,7 +745,7 @@ deviating_seat:int=0):
         card_values_path=weights_json_path,
         packs_input_file=packs_input_file,
         agent_list=baseline_agents,
-        rotate=False,
+        rotate=rotate_option,
         packs_idx=r)
 
         #Instantiate the multi strategy draft, this object will simulate what happens with the exact same
@@ -850,7 +758,7 @@ deviating_seat:int=0):
         card_values_path=weights_json_path,
         packs_input_file=packs_input_file,
         agent_list=agents,
-        rotate=False,
+        rotate=rotate_option,
         packs_idx=r)
        
         #Calling this function will simulate a draft for us. This will allow us to call picks, options, etc. from the draft on a seat by seat basis
@@ -864,9 +772,11 @@ deviating_seat:int=0):
 
         ms_picks.append(draft_ms.picks)
 
+    #Create accumulators for both of the dfs in our experiment (control/experiment data)
     df_list_baseline = []
     df_list_diff = []
 
+    #Iterate through the ms_picks list (actually we'll go through ss_picks concurrently using the index in ms_picks)
     for index,draft in enumerate(ms_picks):
         sim_id = uuid.uuid4()
         
@@ -888,31 +798,41 @@ deviating_seat:int=0):
             df['simid'] = sim_id
             df['player'] = idx2
             df['draft_number'] = index
+
             df_list_baseline.append(df)
+
 
     df_diff = pd.concat(df_list_diff).groupby(['simid','picknum','player','draft_number'])['card'].first().reset_index()
     df_baseline = pd.concat(df_list_baseline).groupby(['simid','picknum','player','draft_number'])['card'].first().reset_index()
 
-    output_diff = process_simulation_results(weights_df_path,df_diff)
-    output_baseline = process_simulation_results(weights_df_path,df_baseline)
+    #Put dfs through workflow that will adjust column names, generate norm-based strengths for the cards, 
+    output_diff = process_simulation_results(weights_df_path,df_diff,n_largest_for_norm=n_largest_for_norm)
+    output_baseline = process_simulation_results(weights_df_path,df_baseline,n_largest_for_norm=n_largest_for_norm)
 
     #Now we add in some housekeeping columns such as what the experiment was, when it was etc. 
     #As of now, we always deviate in seat 0
     for df in [output_diff,output_baseline]:
-        df['majority_strategy'] = str(baseline_agents[0])
-        df['deviating_strategy'] = str(agents[deviating_seat])
+        #First seat in baseline agents should always be the same as others, so we will use index 0 of that list
+        df['majority_strategy'] = str(baseline_agents[0].name)
+        df['deviating_strategy'] = str(agents[deviating_seat].name)
         df['deviating_seat'] = deviating_seat
+
+        #If we want to include a different # of cards to determine norm strength, this will be important
+        df['n_cards_incl_norm'] = n_largest_for_norm
         df['experiment_date'] = str(datetime.datetime.now())
         df['weights_name']=weights_json_path
         df['pack_name']=packs_input_file
         df['batch_id'] = batch_id
+        df['n_rounds'] = rounds
+        df['n_cards_in_pack'] = n_cards_in_pack
+        df['rotate'] = rotate_option
 
         
     #Write the dataframe here that includes all of our simulation picks
-    diff_str = "equilibrium_data/"+output_str.replace(".csv","_diff.csv")
+    diff_str = dirpath + "equilibrium_data/"+output_str.replace(".csv","_diff.csv")
     output_diff.to_csv(diff_str, mode='a',header=(not os.path.exists(diff_str)), index=False)
 
-    baseline_str = "equilibrium_data/"+output_str.replace(".csv","_baseline.csv")
+    baseline_str = dirpath + "equilibrium_data/"+output_str.replace(".csv","_baseline.csv")
     output_baseline.to_csv(baseline_str, mode='a',header=(not os.path.exists(baseline_str)), index=False)
 
     print('complete' + str(datetime.datetime.now()))
@@ -920,12 +840,15 @@ deviating_seat:int=0):
 def simulation_batch_runner(baseline_list:list,
 experiment_list:list, 
 cards_path:str,
-weights_path:str,
+weights_json_path:str,
+weights_df_path:str, 
 draft_path:str,
-n_iter=10,
-n_cards_in_pack=14,
-n_rounds=3,
-):
+abs_dir_path:str,
+n_iter:int=10,
+n_cards_in_pack:int=14,
+n_rounds:int=3,
+n_largest_for_norm:int=23,
+rotate_option:int=0):
     """Given ordered lists of experiments and baseline agents to compare the experiments to, 
     run the experiments and write to the CSV; WARNING, 1 EXPERIMENT (e.g. 1 baseline and 1 set of 
     agents to test), TAKES ~30 MINUTES ON LAPTOP WITH 1000 ITERATIONS:
@@ -940,6 +863,7 @@ n_rounds=3,
     OUTPUTS: /equilibrium_data/filename.csv -> data will be put in the appropriate folder given the naming
     in comp generator"""
 
+
     print('batch start at '+str(datetime.datetime.now()))
     batch_id = uuid.uuid4()
     #For every sublist in our experiment list
@@ -951,6 +875,8 @@ n_rounds=3,
         #For each subset in the experiment (e.g. all hards, iterate through each hard)
         for experiment in experiment_subset:
             print(experiment[0],baseline_subset[0])
-            comp_generator(n_iter,experiment,baseline_subset,n_cards_in_pack,n_rounds,cards_path,weights_path,draft_path,batch_id)
+            equilibrium_experiment_runner(n_iter,experiment,baseline_subset,n_cards_in_pack,
+            n_rounds,cards_path,weights_json_path, weights_df_path,draft_path,abs_dir_path,
+            batch_id=batch_id,deviating_seat=0,n_largest_for_norm=n_largest_for_norm,rotate_option=rotate_option)
             
     print('batch complete at '+str(datetime.datetime.now()))
