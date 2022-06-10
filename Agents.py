@@ -404,6 +404,7 @@ class Med_Agent:
   def __init__(self,
        name='med_agent',
        arch_prefs:list=[0,1,2],
+       #BR UB WB 7, 1, 4
        archs:list=['WU','WB','WR','WG','UB','UR','UG','BR','BG','RG']):
        self.arch_prefs = arch_prefs
        self.archs_selected = ''.join([str(archs[x]) + "_" for x in arch_prefs])
@@ -415,11 +416,13 @@ class Med_Agent:
     #Create the custom array that only considers certain archetypes in a draft
     drafter_archs = np.zeros((draft.n_archetypes,1))
 
-    #Iterate through list of selected archs and replace 0's with 1's where
-    #the drafter wants to draft in that archetype
+    #Also get the actual preferences for the player
+    actual_preferences = draft.drafter_preferences[drafter_position].reshape((draft.n_archetypes,1))
+
+    #Iterate through list of selected archs and replace 0's with the actual values where
+    #the drafter wants to draft in that archetype (this will help when the agent is considering >1 archetype)
     for idx in self.arch_prefs:
-       #pick_idx = np.random.choice(self.set.n_cards, p=row)
-        drafter_archs[idx] = 1
+        drafter_archs[idx] = actual_preferences[idx]
 
     pack_archetype_weights = (
             pack.reshape((draft.set.n_cards,1)) *

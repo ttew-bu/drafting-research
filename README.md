@@ -53,19 +53,13 @@ batch_id: id for the entire batch of expirements (e.g. if you run 20 experiments
 ### index_data
 This folder holds highly raw files from experiments involving human pick data; it is recommended that you use the open_index_file_and_preprocess() function to parse the data into more usable data. These files are good to understand (and tune) performance for the agents in terms of matching human picks (both top 1 and top 3 accuracy) in addition to assessing accuracy under different input weight criteria. The (processed) schema for these tables looks as follows:
 
-### Weights_data
-This folder contains two subfolders: source_weights, which contains weights for certain metrics before preprocessing and processed_weights, ready to use CSVs that are preprocessed versions of one of the source weights. One important thing with notes right now is that one should use weights that do not contain a 0 in the distribution (the minmax for the seen_rate criteria is the best performing on human data, and it avoids this issue because the scores in each archetype are scaled 1-5). When there are zeroes, the equilibrium experiments have a difficult time determining which cards it can/cannot select (this is because everything in the set could be zeroed out for a given selection).
-
-
 # Repository Install Notes
 ### These packages work on Python 3.8.10 or higher and you can install the packages using the following:
 
 pip install -r requirements.txt
 
 ### Due to size constraints with GitHub, only a subset of the data is saved directly with this repository. 
-To access the draft dump, complete weights, etc. please check out this Google Drive folder:[ https://drive.google.com/drive/folders/0ALCO3qxrQkZXUk9PVA](https://drive.google.com/drive/folders/1X1DBADANd_ADcV1aHnYlpdkXgTf28pD_?usp=sharing). You can place all of the folders in the drive at the top level (e.g. inside of the drafting-research directory) on your local/virtual machine. 
-
-(Note you'll need 5-10 gigabytes of storage for everything hosted here; place all files in the Google Drive at the top level of this repo to use the files)
+To access the draft dump, complete weights, etc. please check out this Google Drive folder: https://drive.google.com/drive/folders/1X1DBADANd_ADcV1aHnYlpdkXgTf28pD_?usp=sharing (Note you'll need 5-10 gigabytes of storage for everything hosted here; place all files in the Google Drive at the top level of this repo to use the files)
 
 ### Note that Selenium may require slightly more work (especially the install of Chromedriver)
 check out this link for more detail on complete install directions: https://selenium-python.readthedocs.io/installation.html

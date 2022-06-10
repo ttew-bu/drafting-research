@@ -130,13 +130,9 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-/performance_data/*
-/results_data/*
-
-#Files to omit because they are outdated or useless
-Progress_Report_Mid_April.ipynb
-Micro_Drafting_Example.ipynb
-/draft_txt_files/*
-/equilibrium_data/*
-/index_data/*
-/weights_data/*
+#Files to omit because of size constraints; this data should be loaded in from Google Drive
+draft_txt_files/*
+equilibrium_data/*
+index_data/*
+weights_data/*
+json_files/*
