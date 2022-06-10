@@ -414,7 +414,6 @@ weights_df_w_names:str='weights_data/source_weights/VOM_Weights_default__seen_ra
 
     return None
 
-
 ##HELPER FUNCTIONS AND CLASSES TO RUN SIMULATIONS OF DRAFTS (e.g. many iterations of the classes above and write to files)
 #FUNCTIONS THAT POWER INTERNAL PROCESSES TO RUN HUMAN PICK DRAFTS
 def create_pack_pick_pass_arrays(df:pd.DataFrame,id:str,pick_index:int=11):
@@ -711,31 +710,32 @@ n_largest_for_norm:int=23):
     merged.reset_index(inplace=True)
     return merged
 
-def equilibrium_experiment_runner(num_iter:int,
-agents:list,
+def equilibrium_experiment_runner(agents:list,
 baseline_agents:list,
-n_cards_in_pack:int,
-rounds:int,
 cards_path:str,
 weights_json_path:str,
 weights_df_path:str, 
 packs_input_file:str,
-dirpath:str,
-batch_id:uuid,
-deviating_seat:int=0,
+abs_dir_path:str,
+batch_id:uuid=uuid.uuid4(),
+n_iter:int=10,
+n_cards_in_pack:int=14,
+rounds:int=3,
 n_largest_for_norm:int=23,
-rotate_option:int=0):
+deviating_seat:int=0,
+rotate_option:int=0,
+archetypes:list=['WU','WB','WR','WG','UB','UR','UG','BR','BG','RG']):
     '''Streamline comparison of drafts and create outputs with player prefs;
     this gives us quick glances into how different arrangements '''
 
-    output_str = "equilibrium_data_{num}.csv".format(num=num_iter)
+    output_str = "equilibrium_data_{num}.csv".format(num=n_iter)
     print('start' + str(datetime.datetime.now()))
     #Create two accumulator lists to hold the preferences 
     ss_picks = []
     ms_picks = []
 
     #Create loop that will instantiate two draft objects and run them iteratively 
-    for r in range(0,num_iter):
+    for r in range(0,n_iter):
 
         #Instantiate the single strategy draft, which we will use as a baseline to compare the MultiStrat draft
         draft_ss = MultiStratDraft(
@@ -809,6 +809,11 @@ rotate_option:int=0):
     output_diff = process_simulation_results(weights_df_path,df_diff,n_largest_for_norm=n_largest_for_norm)
     output_baseline = process_simulation_results(weights_df_path,df_baseline,n_largest_for_norm=n_largest_for_norm)
 
+    #Create a remapping dictionary to overwrite the numbers for arch names as the actual archetype
+    arch_remapping_dictionary = {}
+    for idx,l in enumerate([x for x in range(len(archetypes))]):
+        arch_remapping_dictionary[l] = archetypes[idx]
+
     #Now we add in some housekeeping columns such as what the experiment was, when it was etc. 
     #As of now, we always deviate in seat 0
     for df in [output_diff,output_baseline]:
@@ -827,28 +832,33 @@ rotate_option:int=0):
         df['n_cards_in_pack'] = n_cards_in_pack
         df['rotate'] = rotate_option
 
+        #Use our renaming dictionary to put the archnames in our dataframes
+        df.rename(columns=arch_remapping_dictionary, inplace=True)
+
         
     #Write the dataframe here that includes all of our simulation picks
-    diff_str = dirpath + "equilibrium_data/"+output_str.replace(".csv","_diff.csv")
+    diff_str = abs_dir_path + "equilibrium_data/"+output_str.replace(".csv","_diff.csv")
     output_diff.to_csv(diff_str, mode='a',header=(not os.path.exists(diff_str)), index=False)
 
-    baseline_str = dirpath + "equilibrium_data/"+output_str.replace(".csv","_baseline.csv")
+    baseline_str = abs_dir_path + "equilibrium_data/"+output_str.replace(".csv","_baseline.csv")
     output_baseline.to_csv(baseline_str, mode='a',header=(not os.path.exists(baseline_str)), index=False)
 
     print('complete' + str(datetime.datetime.now()))
 
-def simulation_batch_runner(baseline_list:list,
-experiment_list:list, 
+def simulation_batch_runner(experiment_list:list, 
+baseline_list:list,
 cards_path:str,
 weights_json_path:str,
 weights_df_path:str, 
-draft_path:str,
+packs_input_file:str,
 abs_dir_path:str,
 n_iter:int=10,
 n_cards_in_pack:int=14,
 n_rounds:int=3,
 n_largest_for_norm:int=23,
-rotate_option:int=0):
+deviating_seat:int=0,
+rotate_option:int=0,
+archetypes:list=['WU','WB','WR','WG','UB','UR','UG','BR','BG','RG']):
     """Given ordered lists of experiments and baseline agents to compare the experiments to, 
     run the experiments and write to the CSV; WARNING, 1 EXPERIMENT (e.g. 1 baseline and 1 set of 
     agents to test), TAKES ~30 MINUTES ON LAPTOP WITH 1000 ITERATIONS:
@@ -875,8 +885,20 @@ rotate_option:int=0):
         #For each subset in the experiment (e.g. all hards, iterate through each hard)
         for experiment in experiment_subset:
             print(experiment[0],baseline_subset[0])
-            equilibrium_experiment_runner(n_iter,experiment,baseline_subset,n_cards_in_pack,
-            n_rounds,cards_path,weights_json_path, weights_df_path,draft_path,abs_dir_path,
-            batch_id=batch_id,deviating_seat=0,n_largest_for_norm=n_largest_for_norm,rotate_option=rotate_option)
+            equilibrium_experiment_runner(experiment,
+            baseline_subset,
+            n_cards_in_pack,
+            n_rounds,
+            cards_path,
+            weights_json_path, 
+            weights_df_path,
+            packs_input_file,
+            abs_dir_path,
+            n_iter=n_iter,
+            batch_id=batch_id,
+            deviating_seat=deviating_seat,
+            n_largest_for_norm=n_largest_for_norm,
+            rotate_option=rotate_option,
+            archetypes=archetypes)
             
     print('batch complete at '+str(datetime.datetime.now()))
