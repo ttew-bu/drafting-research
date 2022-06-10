@@ -523,7 +523,8 @@ def update_weights(psd:object, draft_arrays:dict, n:int):
     psd.drafter_preferences +
     np.einsum('ca,dc->da', psd.archetype_weights, draft_arrays['picks'][n].reshape(1,psd.set.n_cards)))
 
-def generate_index_residual_delta_df(df_matches:pd.DataFrame, psd:object, scores:list,array_keys:list,agent_names:list, output_name:list,suffix:str):
+def generate_index_residual_delta_df(df_matches:pd.DataFrame, psd:object, scores:list,array_keys:list,
+agent_names:list, output_name:list,suffix:str,abs_dir_path:str):
 
     #We will start with one df with the deltas
      idx_df = pd.DataFrame(scores,columns=agent_names)
@@ -531,9 +532,10 @@ def generate_index_residual_delta_df(df_matches:pd.DataFrame, psd:object, scores
     #Create an array of shape n_cards that is the sum of the card's weights in the x number of archetypes
      norm = psd.archetype_weights.sum(axis=1)
 
-     #We will add the real and ID columns to our data so we can join them
+     #We will add the real and ID columns + picknumbers to our data so we can join them
      idx_df['Real'] = df_matches['Real']
      idx_df['id'] = df_matches['id']
+     idx_df['picknumbers'] = df_matches['picknumbers']
 
     #Combine the two dfs horizontally
      idx_df = pd.concat([idx_df,keys_df],axis=1)
@@ -570,12 +572,12 @@ def generate_index_residual_delta_df(df_matches:pd.DataFrame, psd:object, scores
          idx_df[norm_delta_colname] = idx_df.apply(lambda x: (norm[tuple(x[agent_col_key])].max() - norm[tuple(x[idx_colname])]), axis=1)
 
      #Write the dataframe here that includes all of our simulation picks
-     index_str = "index_data/"+output_name.replace(r'{suffix}','_index_{suffix}'.format(suffix=suffix))
+     index_str = abs_dir_path + "index_data/"+output_name.replace(r'{suffix}','_index_{suffix}'.format(suffix=suffix))
      idx_df.to_csv(index_str, mode='a',header=(not os.path.exists(index_str)), index=False)
 
 ##MODULE FUNCTIONS 
 #COMPLETE FUNCTIONS TO CALL FOR WEIGHT AND SIMULATIONS 
-def run_human_pick_experiment(suffix:str, draft_dump_path:str, weights_path:str, agents:list, 
+def run_human_pick_experiment(suffix:str, draft_dump_path:str, abs_dir_path:str, weights_path:str, agents:list, 
 n_iter:int=1000, pick_index:int=11, cards_per_draft:int=42):
     """Run experiments on dump of human picks, a weights file, a list of instantiated agent classes, the number of rows to select, 
     the position of the pick column in the dump file, and the cards in the draft to validate that we do not assess partial/incomplete 
@@ -597,11 +599,11 @@ n_iter:int=1000, pick_index:int=11, cards_per_draft:int=42):
     df = pd.read_csv(draft_dump_path,nrows=n_iter*cards_per_draft)
 
     #Add automated stamps to our data so we can version it; start by taking weight set used, then add n_drafts
-    output_name = weights_path.replace(r'.csv','_{num}_{suffix}.csv').format(num=str(n_iter*cards_per_draft), suffix=suffix)
-    output_name = output_name.replace(r'weights_data/processed_weights',"")
+    output_name = weights_path.replace(r'.csv','_{num}_{suffix}.csv').format(num=str(n_iter), suffix=suffix)
+    output_name = output_name.replace(r'weights_data/processed_weights/',"")
 
     #Pull our weights df and send to array
-    weights_df =  pd.read_csv(weights_path)
+    weights_df =  pd.read_csv(abs_dir_path + weights_path)
     weights = weights_df.to_numpy()
 
     #Get the IDs to iterate through
@@ -665,7 +667,7 @@ n_iter:int=1000, pick_index:int=11, cards_per_draft:int=42):
             df_matches['picknumbers'] = [x for x in range(0,42)]
 
             #INDEX FILE IS NEW SOURCE TABLE FOR PREPROCESSING FUNCTION
-            generate_index_residual_delta_df(df_matches,psd,scores,array_keys,agent_names,output_name,suffix)
+            generate_index_residual_delta_df(df_matches,psd,scores,array_keys,agent_names,output_name,suffix,abs_dir_path)
                 
         except IndexError:
             print(id)
@@ -679,7 +681,7 @@ def human_pick_experiment_runner(dictionaries:list,weight_file_name):
     #for each item in our processed weights directory
     for d in dictionaries:
         #Iterate through our files
-        string = 'weights_data/processed_weights' + '/' + weight_file_name
+        string = 'weights_data/processed_weights/'+ weight_file_name
         run_human_pick_experiment(d['suffix'],d['draft_str'],string, d['agents'], d['n_iter'], 11)
 
 #class equilibrium_experimentation_util():
