@@ -129,10 +129,3 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
-
-#Files to omit because of size constraints; this data should be loaded in from Google Drive
-draft_txt_files/*
-equilibrium_data/*
-index_data/*
-weights_data/*
-json_files/*
