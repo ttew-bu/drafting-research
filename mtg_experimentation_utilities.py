@@ -664,7 +664,7 @@ n_iter:int=1000, pick_index:int=11, cards_per_draft:int=42):
 
             #Add in the id and picknumbers for us to do more robust analysis
             df_matches['id'] = id
-            df_matches['picknumbers'] = [x for x in range(0,42)]
+            df_matches['picknumbers'] = [x for x in range(0,cards_per_draft)]
 
             #INDEX FILE IS NEW SOURCE TABLE FOR PREPROCESSING FUNCTION
             generate_index_residual_delta_df(df_matches,psd,scores,array_keys,agent_names,output_name,suffix,abs_dir_path)
